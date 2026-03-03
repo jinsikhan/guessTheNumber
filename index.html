@@ -55,11 +55,11 @@
       text-align: center;
       font-size: 1.1rem;
       font-weight: 700;
-      color: #e94560;
+      color: #f1c40f;
       margin-bottom: 1.5rem;
     }
     .timer.warning {
-      color: #ff9f9f;
+      color: #f39c12;
       animation: pulse 0.8s ease-in-out infinite;
     }
     @keyframes pulse {
@@ -168,7 +168,7 @@
     <h1>🔢 숫자 맞추기</h1>
     <p class="sub">1부터 100 사이의 숫자를 맞춰보세요</p>
     <p class="range">범위: 1 ~ 100</p>
-    <p class="timer" id="timer">남은 시간: 60초</p>
+    <p class="timer" id="timer">남은 시간: 40초</p>
 
     <div class="input-row">
       <input type="number" id="guess" placeholder="숫자 입력" min="1" max="100" autofocus>
@@ -182,7 +182,7 @@
 
   <script>
     (function () {
-      var TIME_LIMIT = 60;
+      var TIME_LIMIT = 40;
       var answer = 0;
       var tries = 0;
       var isDone = false;

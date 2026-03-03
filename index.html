@@ -62,6 +62,50 @@
       color: #f39c12;
       animation: pulse 0.8s ease-in-out infinite;
     }
+    .timer-bar {
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .timer-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #f1c40f, #e67e22);
+      border-radius: 4px;
+      transition: width 0.3s ease, background 0.3s;
+    }
+    .timer-bar.danger .timer-bar-fill {
+      background: #e74c3c;
+      animation: bar-pulse 0.5s ease-in-out infinite;
+    }
+    @keyframes bar-pulse {
+      50% { opacity: 0.85; }
+    }
+    .countdown-pop {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 5rem;
+      font-weight: 800;
+      color: #e74c3c;
+      text-shadow: 0 0 30px rgba(231,76,60,0.6);
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .countdown-pop.show {
+      opacity: 1;
+      animation: countdown-scale 0.4s ease-out;
+    }
+    @keyframes countdown-scale {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+      70% { transform: translate(-50%, -50%) scale(1.15); }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
     @keyframes pulse {
       50% { opacity: 0.7; }
     }
@@ -205,6 +249,9 @@
     </div>
     <p class="range" id="rangeText">범위: 1 ~ 100</p>
     <p class="timer" id="timer">남은 시간: 40초</p>
+    <div class="timer-bar" id="timerBar">
+      <div class="timer-bar-fill" id="timerBarFill"></div>
+    </div>
 
     <div class="input-row">
       <input type="number" id="guess" placeholder="숫자 입력" min="1" max="100" autofocus>
@@ -216,6 +263,8 @@
     <p class="best">최고 기록: <span id="best">-</span></p>
     <button type="button" class="again" id="again" style="display: none;">다시 하기</button>
   </div>
+
+  <div class="countdown-pop" id="countdownPop" aria-hidden="true"></div>
 
   <script>
     (function () {
@@ -241,6 +290,9 @@
       var againBtn = document.getElementById('again');
       var bestEl = document.getElementById('best');
       var rangeEl = document.getElementById('rangeText');
+      var timerBar = document.getElementById('timerBar');
+      var timerBarFill = document.getElementById('timerBarFill');
+      var countdownPop = document.getElementById('countdownPop');
 
       function getStorageKey() {
         return 'guessTheNumberBest_' + currentDiff;
@@ -269,14 +321,28 @@
         remainingSeconds = TIME_LIMIT;
         timerEl.textContent = '남은 시간: ' + remainingSeconds + '초';
         timerEl.classList.remove('warning');
+        timerBar.classList.remove('danger');
+        timerBarFill.style.width = '100%';
+        countdownPop.classList.remove('show');
+        countdownPop.textContent = '';
         timerId = setInterval(function () {
           remainingSeconds -= 1;
+          var pct = Math.max(0, (remainingSeconds / TIME_LIMIT) * 100);
+          timerBarFill.style.width = pct + '%';
           timerEl.textContent = '남은 시간: ' + remainingSeconds + '초';
-          if (remainingSeconds <= 3) {
+          if (remainingSeconds <= 5) {
+            timerBar.classList.add('danger');
+            timerEl.classList.add('warning');
+            countdownPop.textContent = remainingSeconds;
+            countdownPop.classList.add('show');
+            setTimeout(function () { countdownPop.classList.remove('show'); }, 400);
+          } else if (remainingSeconds <= 10) {
             timerEl.classList.add('warning');
           }
           if (remainingSeconds <= 0) {
             clearTimer();
+            countdownPop.classList.remove('show');
+            countdownPop.textContent = '';
             isDone = true;
             showMessage('시간 초과! 정답은 ' + answer + ' 이었어요.', 'timeout');
             guessInput.disabled = true;
@@ -345,6 +411,9 @@
         if (num === answer) {
           isDone = true;
           clearTimer();
+          countdownPop.classList.remove('show');
+          countdownPop.textContent = '';
+          timerBarFill.style.width = '0%';
           var best = getBest();
           var isNewBest = best === null || tries < best;
           if (isNewBest) {
@@ -352,6 +421,9 @@
             updateBestDisplay();
           }
           var msg = '정답입니다! 🎉 (' + tries + '번 만에 맞췄어요)';
+          if (remainingSeconds <= 5 && remainingSeconds > 0) {
+            msg = '아슬아슬! ' + remainingSeconds + '초 남기고 성공! 🎉 (' + tries + '번 만에)';
+          }
           if (isNewBest) msg += ' 최고 기록 갱신!';
           showMessage(msg, 'win');
           guessInput.disabled = true;

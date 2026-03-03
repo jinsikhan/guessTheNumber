@@ -171,13 +171,39 @@
       background: rgba(255, 255, 255, 0.15);
       color: #fff;
     }
+    .difficulty {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .difficulty button {
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      background: rgba(255, 255, 255, 0.1);
+      color: #aaa;
+    }
+    .difficulty button:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    .difficulty button.active {
+      background: #e94560;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
   <div class="game">
     <h1>🔢 숫자 맞추기</h1>
-    <p class="sub">1부터 100 사이의 숫자를 맞춰보세요</p>
-    <p class="range">범위: 1 ~ 100</p>
+    <p class="sub">숫자를 맞춰보세요</p>
+    <div class="difficulty">
+      <button type="button" data-diff="easy" id="btn-easy">쉬움 1~50 (30초)</button>
+      <button type="button" data-diff="normal" id="btn-normal" class="active">보통 1~100 (40초)</button>
+      <button type="button" data-diff="hard" id="btn-hard">어려움 1~300 (50초)</button>
+    </div>
+    <p class="range" id="rangeText">범위: 1 ~ 100</p>
     <p class="timer" id="timer">남은 시간: 40초</p>
 
     <div class="input-row">
@@ -193,7 +219,14 @@
 
   <script>
     (function () {
-      var TIME_LIMIT = 40;
+      var DIFF = {
+        easy:   { max: 50,  time: 30 },
+        normal: { max: 100, time: 40 },
+        hard:   { max: 300, time: 50 }
+      };
+      var currentDiff = 'normal';
+      var TIME_LIMIT = DIFF.normal.time;
+      var MAX_NUM = DIFF.normal.max;
       var answer = 0;
       var tries = 0;
       var isDone = false;
@@ -207,15 +240,17 @@
       var timerEl = document.getElementById('timer');
       var againBtn = document.getElementById('again');
       var bestEl = document.getElementById('best');
+      var rangeEl = document.getElementById('rangeText');
 
-      var STORAGE_KEY = 'guessTheNumberBest';
-
+      function getStorageKey() {
+        return 'guessTheNumberBest_' + currentDiff;
+      }
       function getBest() {
-        var v = localStorage.getItem(STORAGE_KEY);
+        var v = localStorage.getItem(getStorageKey());
         return v === null ? null : parseInt(v, 10);
       }
       function setBest(n) {
-        localStorage.setItem(STORAGE_KEY, String(n));
+        localStorage.setItem(getStorageKey(), String(n));
       }
       function updateBestDisplay() {
         var b = getBest();
@@ -252,19 +287,36 @@
       }
 
       function startGame() {
-        answer = Math.floor(Math.random() * 100) + 1;
+        var d = DIFF[currentDiff];
+        MAX_NUM = d.max;
+        TIME_LIMIT = d.time;
+        answer = Math.floor(Math.random() * MAX_NUM) + 1;
         tries = 0;
         isDone = false;
         triesEl.textContent = '0';
         messageEl.textContent = '';
         messageEl.className = 'message empty';
         guessInput.value = '';
+        guessInput.min = '1';
+        guessInput.max = String(MAX_NUM);
+        guessInput.placeholder = '1 ~ ' + MAX_NUM;
         guessInput.disabled = false;
         submitBtn.disabled = false;
         againBtn.style.display = 'none';
+        rangeEl.textContent = '범위: 1 ~ ' + MAX_NUM;
         startTimer();
         guessInput.focus();
         updateBestDisplay();
+      }
+
+      function setDifficulty(diff) {
+        if (isDone || tries === 0) {
+          currentDiff = diff;
+          document.querySelectorAll('.difficulty button').forEach(function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-diff') === diff);
+          });
+          startGame();
+        }
       }
 
       function showMessage(text, type) {
@@ -279,11 +331,11 @@
         var num = parseInt(raw, 10);
 
         if (raw === '' || isNaN(num)) {
-          showMessage('1에서 100 사이의 숫자를 입력하세요.', 'error');
+          showMessage('1에서 ' + MAX_NUM + ' 사이의 숫자를 입력하세요.', 'error');
           return;
         }
-        if (num < 1 || num > 100) {
-          showMessage('1에서 100 사이로 입력하세요.', 'error');
+        if (num < 1 || num > MAX_NUM) {
+          showMessage('1에서 ' + MAX_NUM + ' 사이로 입력하세요.', 'error');
           return;
         }
 
@@ -322,6 +374,9 @@
         if (e.key === 'Enter') checkGuess();
       });
       againBtn.addEventListener('click', startGame);
+      document.getElementById('btn-easy').addEventListener('click', function () { setDifficulty('easy'); });
+      document.getElementById('btn-normal').addEventListener('click', function () { setDifficulty('normal'); });
+      document.getElementById('btn-hard').addEventListener('click', function () { setDifficulty('hard'); });
 
       startGame();
     })();

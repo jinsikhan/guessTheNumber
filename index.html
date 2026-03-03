@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>숫자 맞추기 게임</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #eee;
+      padding: 1rem;
+    }
+    .game {
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 2.5rem;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 0.5rem;
+      color: #e94560;
+    }
+    .sub {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #888;
+      margin-bottom: 2rem;
+    }
+    .range {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-bottom: 0.5rem;
+    }
+    .timer {
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #e94560;
+      margin-bottom: 1.5rem;
+    }
+    .timer.warning {
+      color: #ff9f9f;
+      animation: pulse 0.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      50% { opacity: 0.7; }
+    }
+    .input-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    input[type="number"] {
+      flex: 1;
+      padding: 1rem 1.25rem;
+      font-size: 1.1rem;
+      border: 2px solid rgba(233, 69, 96, 0.3);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-family: inherit;
+    }
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+    input[type="number"]::placeholder {
+      color: #666;
+    }
+    button {
+      padding: 1rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      background: #e94560;
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.15s, background 0.15s;
+    }
+    button:hover {
+      background: #ff6b6b;
+      transform: translateY(-1px);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    .message {
+      min-height: 2.5rem;
+      padding: 1rem;
+      border-radius: 12px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+    .message.empty {
+      background: transparent;
+      color: transparent;
+    }
+    .message.hint-up {
+      background: rgba(233, 69, 96, 0.2);
+      color: #ff9f9f;
+    }
+    .message.hint-down {
+      background: rgba(100, 149, 237, 0.2);
+      color: #87ceeb;
+    }
+    .message.win {
+      background: rgba(76, 175, 80, 0.3);
+      color: #81c784;
+    }
+    .message.error {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ffb74d;
+    }
+    .message.timeout {
+      background: rgba(244, 67, 54, 0.25);
+      color: #ef9a9a;
+    }
+    .tries {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #888;
+    }
+    .tries span {
+      color: #e94560;
+      font-weight: 600;
+    }
+    .again {
+      display: block;
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 1rem;
+      font-size: 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ccc;
+    }
+    .again:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="game">
+    <h1>🔢 숫자 맞추기</h1>
+    <p class="sub">1부터 100 사이의 숫자를 맞춰보세요</p>
+    <p class="range">범위: 1 ~ 100</p>
+    <p class="timer" id="timer">남은 시간: 60초</p>
+
+    <div class="input-row">
+      <input type="number" id="guess" placeholder="숫자 입력" min="1" max="100" autofocus>
+      <button type="button" id="submit">확인</button>
+    </div>
+
+    <div class="message empty" id="message"></div>
+    <p class="tries">시도 횟수: <span id="tries">0</span></p>
+    <button type="button" class="again" id="again" style="display: none;">다시 하기</button>
+  </div>
+
+  <script>
+    (function () {
+      var TIME_LIMIT = 60;
+      var answer = 0;
+      var tries = 0;
+      var isDone = false;
+      var timerId = null;
+      var remainingSeconds = TIME_LIMIT;
+
+      var guessInput = document.getElementById('guess');
+      var submitBtn = document.getElementById('submit');
+      var messageEl = document.getElementById('message');
+      var triesEl = document.getElementById('tries');
+      var timerEl = document.getElementById('timer');
+      var againBtn = document.getElementById('again');
+
+      function clearTimer() {
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+      }
+
+      function startTimer() {
+        clearTimer();
+        remainingSeconds = TIME_LIMIT;
+        timerEl.textContent = '남은 시간: ' + remainingSeconds + '초';
+        timerEl.classList.remove('warning');
+        timerId = setInterval(function () {
+          remainingSeconds -= 1;
+          timerEl.textContent = '남은 시간: ' + remainingSeconds + '초';
+          if (remainingSeconds <= 3) {
+            timerEl.classList.add('warning');
+          }
+          if (remainingSeconds <= 0) {
+            clearTimer();
+            isDone = true;
+            showMessage('시간 초과! 정답은 ' + answer + ' 이었어요.', 'timeout');
+            guessInput.disabled = true;
+            submitBtn.disabled = true;
+            againBtn.style.display = 'block';
+          }
+        }, 1000);
+      }
+
+      function startGame() {
+        answer = Math.floor(Math.random() * 100) + 1;
+        tries = 0;
+        isDone = false;
+        triesEl.textContent = '0';
+        messageEl.textContent = '';
+        messageEl.className = 'message empty';
+        guessInput.value = '';
+        guessInput.disabled = false;
+        submitBtn.disabled = false;
+        againBtn.style.display = 'none';
+        startTimer();
+        guessInput.focus();
+      }
+
+      function showMessage(text, type) {
+        messageEl.textContent = text;
+        messageEl.className = 'message ' + type;
+      }
+
+      function checkGuess() {
+        if (isDone) return;
+
+        var raw = guessInput.value.trim();
+        var num = parseInt(raw, 10);
+
+        if (raw === '' || isNaN(num)) {
+          showMessage('1에서 100 사이의 숫자를 입력하세요.', 'error');
+          return;
+        }
+        if (num < 1 || num > 100) {
+          showMessage('1에서 100 사이로 입력하세요.', 'error');
+          return;
+        }
+
+        tries += 1;
+        triesEl.textContent = tries;
+
+        if (num === answer) {
+          isDone = true;
+          clearTimer();
+          showMessage('정답입니다! 🎉 (' + tries + '번 만에 맞췄어요)', 'win');
+          guessInput.disabled = true;
+          submitBtn.disabled = true;
+          againBtn.style.display = 'block';
+          return;
+        }
+
+        if (num < answer) {
+          showMessage('더 커요 ↑', 'hint-up');
+        } else {
+          showMessage('더 작아요 ↓', 'hint-down');
+        }
+        guessInput.value = '';
+        guessInput.focus();
+      }
+
+      submitBtn.addEventListener('click', checkGuess);
+      guessInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') checkGuess();
+      });
+      againBtn.addEventListener('click', startGame);
+
+      startGame();
+    })();
+  </script>
+</body>
+</html>

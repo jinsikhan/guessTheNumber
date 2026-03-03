@@ -148,6 +148,16 @@
       color: #e94560;
       font-weight: 600;
     }
+    .best {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+    .best span {
+      color: #f1c40f;
+      font-weight: 600;
+    }
     .again {
       display: block;
       width: 100%;
@@ -177,6 +187,7 @@
 
     <div class="message empty" id="message"></div>
     <p class="tries">시도 횟수: <span id="tries">0</span></p>
+    <p class="best">최고 기록: <span id="best">-</span></p>
     <button type="button" class="again" id="again" style="display: none;">다시 하기</button>
   </div>
 
@@ -195,6 +206,21 @@
       var triesEl = document.getElementById('tries');
       var timerEl = document.getElementById('timer');
       var againBtn = document.getElementById('again');
+      var bestEl = document.getElementById('best');
+
+      var STORAGE_KEY = 'guessTheNumberBest';
+
+      function getBest() {
+        var v = localStorage.getItem(STORAGE_KEY);
+        return v === null ? null : parseInt(v, 10);
+      }
+      function setBest(n) {
+        localStorage.setItem(STORAGE_KEY, String(n));
+      }
+      function updateBestDisplay() {
+        var b = getBest();
+        bestEl.textContent = b !== null ? b + '번' : '-';
+      }
 
       function clearTimer() {
         if (timerId) {
@@ -238,6 +264,7 @@
         againBtn.style.display = 'none';
         startTimer();
         guessInput.focus();
+        updateBestDisplay();
       }
 
       function showMessage(text, type) {
@@ -266,7 +293,15 @@
         if (num === answer) {
           isDone = true;
           clearTimer();
-          showMessage('정답입니다! 🎉 (' + tries + '번 만에 맞췄어요)', 'win');
+          var best = getBest();
+          var isNewBest = best === null || tries < best;
+          if (isNewBest) {
+            setBest(tries);
+            updateBestDisplay();
+          }
+          var msg = '정답입니다! 🎉 (' + tries + '번 만에 맞췄어요)';
+          if (isNewBest) msg += ' 최고 기록 갱신!';
+          showMessage(msg, 'win');
           guessInput.disabled = true;
           submitBtn.disabled = true;
           againBtn.style.display = 'block';

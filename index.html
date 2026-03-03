@@ -199,9 +199,9 @@
     <h1>🔢 숫자 맞추기</h1>
     <p class="sub">숫자를 맞춰보세요</p>
     <div class="difficulty">
-      <button type="button" data-diff="easy" id="btn-easy">쉬움 1~50 (30초)</button>
-      <button type="button" data-diff="normal" id="btn-normal" class="active">보통 1~100 (40초)</button>
-      <button type="button" data-diff="hard" id="btn-hard">어려움 1~300 (50초)</button>
+      <button type="button" data-diff="easy" id="btn-easy">쉬움 1~50 (15초)</button>
+      <button type="button" data-diff="normal" id="btn-normal" class="active">보통 1~100 (30초)</button>
+      <button type="button" data-diff="hard" id="btn-hard">어려움 1~300 (40초)</button>
     </div>
     <p class="range" id="rangeText">범위: 1 ~ 100</p>
     <p class="timer" id="timer">남은 시간: 40초</p>
@@ -220,9 +220,9 @@
   <script>
     (function () {
       var DIFF = {
-        easy:   { max: 50,  time: 30 },
-        normal: { max: 100, time: 40 },
-        hard:   { max: 300, time: 50 }
+        easy:   { max: 50,  time: 15 },
+        normal: { max: 100, time: 30 },
+        hard:   { max: 300, time: 40 }
       };
       var currentDiff = 'normal';
       var TIME_LIMIT = DIFF.normal.time;

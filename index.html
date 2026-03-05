@@ -420,7 +420,7 @@
           <canvas id="hexCanvas" width="360" height="420"></canvas>
         </div>
         <div class="hex-info">
-          <p>레벨 <span id="hexLevel">1</span> &nbsp;|&nbsp; 점수: <span id="hexScore">0</span></p>
+          <p>레벨 <span id="hexLevel">1</span> &nbsp;|&nbsp; 점수: <span id="hexScore">0</span> &nbsp;|&nbsp; 다음 레벨까지 <span id="hexNext">200</span>점</p>
         </div>
       </div>
     </div>
@@ -439,6 +439,8 @@
           panels.forEach(function (p) { p.classList.remove('active'); });
           btn.classList.add('active');
           document.getElementById('panel-' + tab).classList.add('active');
+          var pop = document.getElementById('countdownPop');
+          if (pop && tab !== 'guess') { pop.classList.remove('show'); pop.textContent = ''; }
         });
       });
     })();
@@ -450,6 +452,7 @@
       var ctx = canvas.getContext('2d');
       var scoreEl = document.getElementById('hexScore');
       var levelEl = document.getElementById('hexLevel');
+      var nextEl = document.getElementById('hexNext');
       var R = 20;
       var GAP = 4;
       var COLS = 8;
@@ -463,6 +466,9 @@
       var level = 1;
       var POINTS_PER_LEVEL = 200;
       var levelUpUntil = 0;
+      var comboCount = 0;
+      var comboShowUntil = 0;
+      var matchFlashUntil = 0;
       var grid = [];
       var BOMB_CHANCE = 0.08;
       var MISSILE_CHANCE = 0.05;
@@ -653,20 +659,34 @@
           }
         }
         for (var i = 0; i < ROWS * COLS; i++) grid[i] = newGrid[i];
-        score += toRemove.length * 10;
+        var baseScore = toRemove.length * 10;
+        var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
+        score += baseScore + comboBonus;
         if (scoreEl) scoreEl.textContent = score;
+        comboShowUntil = Date.now() + 1200;
+        matchFlashUntil = Date.now() + 100;
+        var nextLevelAt = level * POINTS_PER_LEVEL;
+        if (nextEl) nextEl.textContent = Math.max(0, nextLevelAt - score);
         var newLevel = 1 + Math.floor(score / POINTS_PER_LEVEL);
         if (newLevel > level) {
           level = newLevel;
           if (levelEl) levelEl.textContent = level;
+          if (nextEl) nextEl.textContent = Math.max(0, level * POINTS_PER_LEVEL - score);
           levelUpUntil = Date.now() + 1500;
           levelUpDrawLoop();
+        } else {
+          comboDrawLoop();
         }
       }
 
       function levelUpDrawLoop() {
         draw();
         if (Date.now() < levelUpUntil) requestAnimationFrame(levelUpDrawLoop);
+      }
+
+      function comboDrawLoop() {
+        draw();
+        if (Date.now() < comboShowUntil || Date.now() < matchFlashUntil) requestAnimationFrame(comboDrawLoop);
       }
 
       function draw() {
@@ -681,7 +701,28 @@
             drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile, isSel);
           }
         }
-        if (Date.now() < levelUpUntil) {
+        var now = Date.now();
+        if (now < matchFlashUntil) {
+          ctx.save();
+          var flashAlpha = 1 - (now - (matchFlashUntil - 100)) / 100;
+          ctx.fillStyle = 'rgba(255,255,255,' + flashAlpha * 0.35 + ')';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        }
+        if (now < comboShowUntil && comboCount > 1) {
+          ctx.save();
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = '#f1c40f';
+          ctx.lineWidth = 3;
+          ctx.font = 'bold 26px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          var comboText = '🔥 콤보 x' + comboCount + '!';
+          ctx.strokeText(comboText, canvas.width / 2, 50);
+          ctx.fillText(comboText, canvas.width / 2, 50);
+          ctx.restore();
+        }
+        if (now < levelUpUntil) {
           ctx.save();
           ctx.fillStyle = 'rgba(0,0,0,0.5)';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -815,12 +856,16 @@
         if (selected.length >= 3) {
           var result = collectToRemove(selected);
           var toRemove = result.toRemove;
+          comboCount++;
+          matchFlashUntil = Date.now() + 100;
           if (result.bombPos || result.missilePos) {
             hexAnim = { start: Date.now(), bombPos: result.bombPos, missilePos: result.missilePos, toRemove: toRemove };
             requestAnimationFrame(animateHex);
           } else {
             applyRemove(toRemove);
           }
+        } else {
+          comboCount = 0;
         }
         selected = [];
         strokeColor = null;
@@ -923,9 +968,11 @@
           if (remainingSeconds <= 5) {
             timerBar.classList.add('danger');
             timerEl.classList.add('warning');
-            countdownPop.textContent = remainingSeconds;
-            countdownPop.classList.add('show');
-            setTimeout(function () { countdownPop.classList.remove('show'); }, 400);
+            if (document.getElementById('panel-guess').classList.contains('active')) {
+              countdownPop.textContent = remainingSeconds;
+              countdownPop.classList.add('show');
+              setTimeout(function () { countdownPop.classList.remove('show'); }, 400);
+            }
           } else if (remainingSeconds <= 10) {
             timerEl.classList.add('warning');
           }

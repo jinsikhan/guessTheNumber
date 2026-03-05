@@ -480,6 +480,9 @@
       var hexAnim = null;
       var BOMB_ANIM_MS = 480;
       var MISSILE_ANIM_MS = 420;
+      var scorePopups = [];
+      var bigTextUntil = 0;
+      var bigText = '';
 
       function id(r, c) { return r * COLS + c; }
       function neighbors(r, c) {
@@ -579,13 +582,36 @@
         return HEX_COLORS.slice(0, n);
       }
 
-      function randCell() {
+      function randCell(r, c) {
         var colors = getColorsForLevel(level);
         var allowItem = totalRemoved >= getItemThreshold();
-        var itemMult = 1 / (1 + (level - 1) * 0.18);
+        var itemMult = 1 / (1 + (level - 1) * 0.28);
         var isBomb = allowItem && Math.random() < BOMB_CHANCE * itemMult;
         var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE * itemMult;
-        var colorIdx = Math.floor(Math.random() * colors.length);
+        var colorIdx;
+        if (r != null && c != null && level >= 2) {
+          var nb = neighbors(r, c);
+          var neighborColors = {};
+          for (var i = 0; i < nb.length; i++) {
+            var cell = get(nb[i].r, nb[i].c);
+            if (cell) neighborColors[cell.color] = (neighborColors[cell.color] || 0) + 1;
+          }
+          var weights = [];
+          for (var k = 0; k < colors.length; k++) {
+            var w = neighborColors[colors[k]] ? 0.35 : 1;
+            weights.push(w);
+          }
+          var sum = 0;
+          for (var q = 0; q < weights.length; q++) sum += weights[q];
+          var rnd = Math.random() * sum;
+          for (colorIdx = 0; colorIdx < weights.length; colorIdx++) {
+            rnd -= weights[colorIdx];
+            if (rnd <= 0) break;
+          }
+          if (colorIdx >= colors.length) colorIdx = colors.length - 1;
+        } else {
+          colorIdx = Math.floor(Math.random() * colors.length);
+        }
         return { color: colors[colorIdx], bomb: isBomb, missile: isMissile };
       }
 
@@ -645,7 +671,27 @@
         return { toRemove: toRemove, bombPos: bombPos, missilePos: missilePos };
       }
 
-      function applyRemove(toRemove) {
+      function findAnyMatch() {
+        var visited = {};
+        for (var r = 0; r < ROWS; r++) {
+          for (var c = 0; c < COLS; c++) {
+            if (!get(r, c)) continue;
+            var group = findGroup(r, c);
+            if (group.length < 3) continue;
+            var id = group[0].r * COLS + group[0].c;
+            for (var i = 1; i < group.length; i++) {
+              var id2 = group[i].r * COLS + group[i].c;
+              if (id2 < id) id = id2;
+            }
+            if (visited[id]) continue;
+            visited[id] = true;
+            return group;
+          }
+        }
+        return null;
+      }
+
+      function doRemoveAndRefill(toRemove) {
         var seen = {};
         toRemove = toRemove.filter(function (t) {
           var k = t.r + ',' + t.c;
@@ -654,10 +700,8 @@
           return true;
         });
         for (var i = 0; i < toRemove.length; i++) {
-          var t = toRemove[i];
-          remove(t.r, t.c);
+          remove(toRemove[i].r, toRemove[i].c);
         }
-        // 새 그리드에만 쓰기 → 읽기/쓰기 겹침 없이 빈 칸만 채움
         var newGrid = [];
         for (var c = 0; c < COLS; c++) {
           var cells = [];
@@ -671,15 +715,36 @@
               newGrid[r * COLS + c] = cells[idx];
               idx++;
             } else {
-              newGrid[r * COLS + c] = randCell();
+              newGrid[r * COLS + c] = randCell(r, c);
             }
           }
         }
         for (var i = 0; i < ROWS * COLS; i++) grid[i] = newGrid[i];
         totalRemoved += toRemove.length;
-        var baseScore = toRemove.length * 10;
+        return toRemove.length;
+      }
+
+      function applyRemove(toRemove) {
+        var cnt = doRemoveAndRefill(toRemove);
+        var baseScore = cnt * 10;
         var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
         score += baseScore + comboBonus;
+        scorePopups.push({ score: baseScore + comboBonus, x: canvas.width / 2, y: canvas.height / 2, start: Date.now() });
+        if (cnt >= 6) {
+          bigTextUntil = Date.now() + 1000;
+          bigText = cnt >= 8 ? '🎉 대박!!' : '대박!';
+        }
+        var chainCount = 0;
+        while (true) {
+          var group = findAnyMatch();
+          if (!group || group.length < 3) break;
+          var result = collectToRemove(group);
+          var chainCnt = doRemoveAndRefill(result.toRemove);
+          chainCount++;
+          var chainScore = chainCnt * (10 + chainCount * 5);
+          score += chainScore;
+          scorePopups.push({ score: chainScore, x: canvas.width / 2, y: canvas.height / 2 + 30, start: Date.now() });
+        }
         if (scoreEl) scoreEl.textContent = score;
         comboShowUntil = Date.now() + 1200;
         matchFlashUntil = Date.now() + 100;
@@ -706,7 +771,10 @@
 
       function comboDrawLoop() {
         draw();
-        if (Date.now() < comboShowUntil || Date.now() < matchFlashUntil) requestAnimationFrame(comboDrawLoop);
+        var now = Date.now();
+        if (now < comboShowUntil || now < matchFlashUntil || now < bigTextUntil || scorePopups.length > 0) {
+          requestAnimationFrame(comboDrawLoop);
+        }
       }
 
       function draw() {
@@ -751,6 +819,31 @@
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('⭐ 레벨 ' + level + ' ⭐', canvas.width / 2, canvas.height / 2);
+          ctx.restore();
+        }
+        for (var i = scorePopups.length - 1; i >= 0; i--) {
+          var pop = scorePopups[i];
+          var age = now - pop.start;
+          if (age > 800) { scorePopups.splice(i, 1); continue; }
+          var alpha = age < 100 ? 1 : 1 - (age - 100) / 700;
+          ctx.save();
+          ctx.font = 'bold 22px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+          ctx.fillText('+' + pop.score, pop.x, pop.y - age * 0.08);
+          ctx.restore();
+        }
+        if (now < bigTextUntil && bigText) {
+          ctx.save();
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = '#f1c40f';
+          ctx.lineWidth = 4;
+          ctx.font = 'bold 32px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.strokeText(bigText, canvas.width / 2, 80);
+          ctx.fillText(bigText, canvas.width / 2, 80);
           ctx.restore();
         }
       }

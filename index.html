@@ -27,7 +27,7 @@
       background: rgba(255, 255, 255, 0.06);
       border-radius: 20px;
       padding: 2.5rem;
-      max-width: 420px;
+      max-width: 560px;
       width: 100%;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -239,7 +239,7 @@
     /* 탭 */
     .app-wrap {
       width: 100%;
-      max-width: 480px;
+      max-width: 640px;
     }
     .tab-buttons {
       display: flex;
@@ -317,13 +317,57 @@
       margin-top: 1rem;
       width: 100%;
     }
+    /* 벌집 퍼즐 */
+    .hex-wrap {
+      text-align: center;
+    }
+    .hex-wrap h1 { margin-bottom: 0.5rem; }
+    .hex-wrap .sub { margin-bottom: 1rem; }
+    .hex-canvas-wrap {
+      margin: 1rem auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0d0d14;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+      max-width: 100%;
+    }
+    #hexCanvas {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+    .hex-info {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      color: #aaa;
+    }
+    .hex-info span { color: #f1c40f; font-weight: 700; }
+    /* 모바일 대응 */
+    @media (max-width: 640px) {
+      body { padding: 0.5rem; align-items: flex-start; padding-top: 1rem; }
+      .game { padding: 1.25rem; }
+      .tab-panel { padding: 1.25rem; }
+      .tab-btn { padding: 0.65rem 0.5rem; font-size: 0.8rem; }
+      .brick-canvas-wrap, .hex-canvas-wrap { margin: 0.5rem auto; max-width: 100%; }
+      #brickCanvas, #hexCanvas { max-width: 100%; height: auto; display: block; }
+      .brick-info, .hex-info { flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
+    }
+    @media (max-width: 480px) {
+      h1 { font-size: 1.25rem; }
+      .tab-btn { font-size: 0.75rem; padding: 0.6rem 0.25rem; }
+    }
   </style>
 </head>
 <body>
   <div class="app-wrap">
     <div class="tab-buttons">
-      <button type="button" class="tab-btn active" data-tab="guess">🔢 숫자 맞추기</button>
-      <button type="button" class="tab-btn" data-tab="brick">🧱 벽돌 깨기</button>
+      <button type="button" class="tab-btn active" data-tab="guess">🔢 숫자</button>
+      <button type="button" class="tab-btn" data-tab="brick">🧱 벽돌</button>
+      <button type="button" class="tab-btn" data-tab="hex">🍯 벌집</button>
     </div>
 
     <div id="panel-guess" class="tab-panel active">
@@ -358,13 +402,26 @@
         <h1>🧱 벽돌 깨기</h1>
         <p class="sub">패들을 움직여 공을 받고 벽돌을 모두 깨세요</p>
         <div class="brick-canvas-wrap">
-          <canvas id="brickCanvas" width="400" height="480"></canvas>
+          <canvas id="brickCanvas" width="560" height="640"></canvas>
         </div>
         <div class="brick-info">
           <p>점수: <span id="brickScore">0</span></p>
           <p>목숨: <span id="brickLives">3</span></p>
         </div>
         <button type="button" class="again brick-start" id="brickStart">시작하기</button>
+      </div>
+    </div>
+
+    <div id="panel-hex" class="tab-panel">
+      <div class="hex-wrap">
+        <h1>🍯 벌집 퍼즐</h1>
+        <p class="sub">같은 색 벌집을 3개 이상 맞추면 사라져요. 폭탄·미사일을 활용하세요</p>
+        <div class="hex-canvas-wrap">
+          <canvas id="hexCanvas" width="400" height="440"></canvas>
+        </div>
+        <div class="hex-info">
+          <p>점수: <span id="hexScore">0</span></p>
+        </div>
       </div>
     </div>
   </div>
@@ -384,6 +441,232 @@
           document.getElementById('panel-' + tab).classList.add('active');
         });
       });
+    })();
+  </script>
+  <script>
+    (function () {
+      var canvas = document.getElementById('hexCanvas');
+      if (!canvas || !canvas.getContext) return;
+      var ctx = canvas.getContext('2d');
+      var scoreEl = document.getElementById('hexScore');
+      var R = 20;
+      var GAP = 4;
+      var COLS = 8;
+      var ROWS = 9;
+      var HEX_W = Math.sqrt(3) * R;
+      var HEX_H = 2 * R;
+      var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
+      var score = 0;
+      var grid = [];
+      var BOMB_CHANCE = 0.08;
+      var MISSILE_CHANCE = 0.05;
+
+      function id(r, c) { return r * COLS + c; }
+      function neighbors(r, c) {
+        var dc = (r % 2 === 0) ? [-1, 0, -1, 1, -1, 0] : [0, 1, -1, 1, 0, 1];
+        var dr = [-1, -1, 0, 0, 1, 1];
+        var out = [];
+        for (var i = 0; i < 6; i++) {
+          var nr = r + dr[i], nc = c + dc[i];
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) out.push({ r: nr, c: nc });
+        }
+        return out;
+      }
+
+      function hexToPixel(r, c) {
+        var x = c * (HEX_W + GAP) + (r % 2) * (HEX_W / 2 + GAP / 2);
+        var y = r * (HEX_H * 0.75 + GAP);
+        return { x: x + HEX_W / 2 + GAP, y: y + HEX_H / 2 + GAP };
+      }
+
+      function pixelToHex(px, py) {
+        var c = Math.floor((px - GAP) / (HEX_W + GAP));
+        var r = Math.floor((py - GAP) / (HEX_H * 0.75 + GAP));
+        var best = null, bestD = 1e9;
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            var rr = r + dr, cc = c + dc;
+            if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) continue;
+            var p = hexToPixel(rr, cc);
+            var dx = px - p.x, dy = py - p.y;
+            var d = Math.sqrt(dx * dx + dy * dy);
+            if (d < R && d < bestD) { bestD = d; best = { r: rr, c: cc }; }
+          }
+        }
+        return best;
+      }
+
+      function drawHex(x, y, color, isBomb, isMissile) {
+        ctx.beginPath();
+        for (var i = 0; i < 6; i++) {
+          var a = (Math.PI / 3) * i;
+          var hx = x + R * Math.cos(a), hy = y + R * Math.sin(a);
+          if (i === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (isBomb) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 18px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('💣', x, y);
+        } else if (isMissile) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 18px sans-serif';
+          ctx.fillText('🚀', x, y);
+        }
+      }
+
+      function initGrid() {
+        grid = [];
+        for (var r = 0; r < ROWS; r++) {
+          for (var c = 0; c < COLS; c++) {
+            grid.push(randCell());
+          }
+        }
+      }
+
+      function randCell() {
+        var isBomb = Math.random() < BOMB_CHANCE;
+        var isMissile = !isBomb && Math.random() < MISSILE_CHANCE;
+        var colorIdx = Math.floor(Math.random() * HEX_COLORS.length);
+        return { color: HEX_COLORS[colorIdx], bomb: isBomb, missile: isMissile };
+      }
+
+      function get(r, c) { return grid[r * COLS + c]; }
+      function set(r, c, cell) { grid[r * COLS + c] = cell; }
+      function remove(r, c) { set(r, c, null); }
+
+      function findGroup(r, c) {
+        var cell = get(r, c);
+        if (!cell) return [];
+        var key = cell.color;
+        var visited = {};
+        var list = [];
+        function dfs(rr, cc) {
+          var i = id(rr, cc);
+          if (visited[i]) return;
+          var c2 = get(rr, cc);
+          if (!c2 || c2.color !== key) return;
+          visited[i] = true;
+          list.push({ r: rr, c: cc });
+          var nb = neighbors(rr, cc);
+          for (var j = 0; j < nb.length; j++) dfs(nb[j].r, nb[j].c);
+        }
+        dfs(r, c);
+        return list;
+      }
+
+      function collectToRemove(group) {
+        var toRemove = [];
+        var hasBomb = false, hasMissile = false;
+        var bombPos = null, missilePos = null;
+        for (var i = 0; i < group.length; i++) {
+          var g = group[i];
+          var cell = get(g.r, g.c);
+          if (cell.bomb) { hasBomb = true; bombPos = g; }
+          if (cell.missile) { hasMissile = true; missilePos = g; }
+          toRemove.push({ r: g.r, c: g.c });
+        }
+        if (hasBomb && bombPos) {
+          for (var dr = -1; dr <= 1; dr++)
+            for (var dc = -1; dc <= 1; dc++) {
+              var rr = bombPos.r + dr, cc = bombPos.c + dc;
+              if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
+                var already = toRemove.some(function (t) { return t.r === rr && t.c === cc; });
+                if (!already) toRemove.push({ r: rr, c: cc });
+              }
+            }
+        }
+        if (hasMissile && missilePos) {
+          for (var cc = 0; cc < COLS; cc++) {
+            var already = toRemove.some(function (t) { return t.r === missilePos.r && t.c === cc; });
+            if (!already) toRemove.push({ r: missilePos.r, c: cc });
+          }
+          for (var rr = 0; rr < ROWS; rr++) {
+            var already = toRemove.some(function (t) { return t.r === rr && t.c === missilePos.c; });
+            if (!already) toRemove.push({ r: rr, c: missilePos.c });
+          }
+        }
+        return toRemove;
+      }
+
+      function applyRemove(toRemove) {
+        var seen = {};
+        toRemove = toRemove.filter(function (t) {
+          var k = t.r + ',' + t.c;
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+        for (var i = 0; i < toRemove.length; i++) {
+          var t = toRemove[i];
+          remove(t.r, t.c);
+        }
+        for (var c = 0; c < COLS; c++) {
+          var write = ROWS - 1;
+          for (var r = ROWS - 1; r >= 0; r--) {
+            if (get(r, c)) {
+              if (write !== r) { set(write, c, get(r, c)); remove(r, c); }
+              write--;
+            }
+          }
+          while (write >= 0) { set(write, c, randCell()); write--; }
+        }
+        score += toRemove.length * 10;
+        if (scoreEl) scoreEl.textContent = score;
+      }
+
+      function draw() {
+        ctx.fillStyle = '#0d0d14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        for (var r = 0; r < ROWS; r++) {
+          for (var c = 0; c < COLS; c++) {
+            var cell = get(r, c);
+            if (!cell) continue;
+            var p = hexToPixel(r, c);
+            drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile);
+          }
+        }
+      }
+
+      function onClick(px, py) {
+        var h = pixelToHex(px, py);
+        if (!h) return;
+        var group = findGroup(h.r, h.c);
+        if (group.length < 3) return;
+        var toRemove = collectToRemove(group);
+        applyRemove(toRemove);
+        draw();
+      }
+
+      canvas.addEventListener('click', function (e) {
+        var rect = canvas.getBoundingClientRect();
+        var scaleX = canvas.width / rect.width;
+        var scaleY = canvas.height / rect.height;
+        var px = (e.clientX - rect.left) * scaleX;
+        var py = (e.clientY - rect.top) * scaleY;
+        onClick(px, py);
+      });
+      canvas.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        var rect = canvas.getBoundingClientRect();
+        var scaleX = canvas.width / rect.width;
+        var scaleY = canvas.height / rect.height;
+        var t = e.touches[0];
+        var px = (t.clientX - rect.left) * scaleX;
+        var py = (t.clientY - rect.top) * scaleY;
+        onClick(px, py);
+      }, { passive: false });
+
+      initGrid();
+      draw();
     })();
   </script>
   <script>
@@ -583,12 +866,12 @@
       var BRICK_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
       var COLS = 10;
       var ROWS = 6;
-      var BRICK_W = 35;
-      var BRICK_H = 16;
-      var BRICK_PAD = 5;
-      var PADDLE_W = 80;
-      var PADDLE_W_WIDE = 120;
-      var PADDLE_H = 12;
+      var BRICK_W = 50;
+      var BRICK_H = 24;
+      var BRICK_PAD = 6;
+      var PADDLE_W = 100;
+      var PADDLE_W_WIDE = 140;
+      var PADDLE_H = 14;
       var BALL_R = 6;
       var PADDLE_Y = canvas.height - 30;
       var ITEM_DROP_CHANCE = 0.28;

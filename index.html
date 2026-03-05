@@ -461,7 +461,7 @@
       var HEX_H = Math.sqrt(3) * R;
       var STEP_X = Math.sqrt(3) * R + GAP;
       var STEP_Y = 1.5 * R + GAP;
-      var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
+      var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22'];
       var score = 0;
       var level = 1;
       var POINTS_PER_LEVEL = 450;
@@ -554,9 +554,9 @@
         if (lv <= 1) return { rows: 8, cols: 7 };
         if (lv === 2) return { rows: 8, cols: 8 };
         if (lv === 3) return { rows: 9, cols: 8 };
-        if (lv === 4) return { rows: 9, cols: 9 };
-        if (lv === 5) return { rows: 10, cols: 9 };
-        return { rows: 10, cols: 10 };
+        if (lv === 4) return { rows: 9, cols: 8 };
+        if (lv === 5) return { rows: 9, cols: 8 };
+        return { rows: 9, cols: 8 };
       }
 
       function applyGridSize() {
@@ -582,8 +582,9 @@
       function randCell() {
         var colors = getColorsForLevel(level);
         var allowItem = totalRemoved >= getItemThreshold();
-        var isBomb = allowItem && Math.random() < BOMB_CHANCE;
-        var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE;
+        var itemMult = 1 / (1 + (level - 1) * 0.18);
+        var isBomb = allowItem && Math.random() < BOMB_CHANCE * itemMult;
+        var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE * itemMult;
         var colorIdx = Math.floor(Math.random() * colors.length);
         return { color: colors[colorIdx], bomb: isBomb, missile: isMissile };
       }
@@ -624,14 +625,12 @@
           toRemove.push({ r: g.r, c: g.c });
         }
         if (hasBomb && bombPos) {
-          for (var dr = -1; dr <= 1; dr++)
-            for (var dc = -1; dc <= 1; dc++) {
-              var rr = bombPos.r + dr, cc = bombPos.c + dc;
-              if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
-                var already = toRemove.some(function (t) { return t.r === rr && t.c === cc; });
-                if (!already) toRemove.push({ r: rr, c: cc });
-              }
-            }
+          var nb = neighbors(bombPos.r, bombPos.c);
+          for (var j = 0; j < nb.length; j++) {
+            var nn = nb[j];
+            var already = toRemove.some(function (t) { return t.r === nn.r && t.c === nn.c; });
+            if (!already) toRemove.push({ r: nn.r, c: nn.c });
+          }
         }
         if (hasMissile && missilePos) {
           for (var cc = 0; cc < COLS; cc++) {
@@ -759,18 +758,30 @@
       function drawBombAnim(bombPos, elapsed) {
         var p = hexToPixel(bombPos.r, bombPos.c);
         var t = Math.min(1, elapsed / BOMB_ANIM_MS);
-        var radius = R * (1 + t * 4);
-        var alpha = 1 - t * 1.2;
+        var radius = R * (2 + t * 6);
+        var alpha = 1 - t * 0.9;
         if (alpha <= 0) return;
         ctx.save();
         var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
-        g.addColorStop(0, 'rgba(255,180,50,' + (alpha * 0.9) + ')');
-        g.addColorStop(0.4, 'rgba(230,80,30,' + (alpha * 0.6) + ')');
-        g.addColorStop(0.8, 'rgba(180,30,10,' + (alpha * 0.3) + ')');
-        g.addColorStop(1, 'rgba(80,10,0,0)');
+        g.addColorStop(0, 'rgba(255,255,200,' + (alpha * 1) + ')');
+        g.addColorStop(0.15, 'rgba(255,220,80,' + (alpha * 0.95) + ')');
+        g.addColorStop(0.35, 'rgba(255,120,20,' + (alpha * 0.85) + ')');
+        g.addColorStop(0.55, 'rgba(240,50,10,' + (alpha * 0.6) + ')');
+        g.addColorStop(0.75, 'rgba(180,20,0,' + (alpha * 0.35) + ')');
+        g.addColorStop(1, 'rgba(60,5,0,0)');
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        var innerR = R * (0.5 + t * 2);
+        var innerAlpha = (1 - t) * 0.5;
+        var g2 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, innerR);
+        g2.addColorStop(0, 'rgba(255,255,255,' + innerAlpha + ')');
+        g2.addColorStop(0.5, 'rgba(255,200,100,' + innerAlpha * 0.5 + ')');
+        g2.addColorStop(1, 'rgba(255,100,0,0)');
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, innerR, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }

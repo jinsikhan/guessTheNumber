@@ -459,8 +459,8 @@
       var ROWS = 9;
       var HEX_W = 2 * R;
       var HEX_H = Math.sqrt(3) * R;
-      var STEP_X = 1.5 * R + GAP;
-      var STEP_Y = HEX_H + GAP;
+      var STEP_X = Math.sqrt(3) * R + GAP;
+      var STEP_Y = 1.5 * R + GAP;
       var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
       var score = 0;
       var level = 1;
@@ -494,14 +494,14 @@
       }
 
       function hexToPixel(r, c) {
-        var x = GAP + R * 0.5 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
+        var x = GAP + (Math.sqrt(3) * R) / 2 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
         var y = GAP + R + r * STEP_Y;
         return { x: x, y: y };
       }
 
       function pixelToHex(px, py) {
-        var cApprox = Math.floor((px - GAP - R * 0.5) / STEP_X);
         var rApprox = Math.floor((py - GAP - R) / STEP_Y);
+        var cApprox = Math.floor((px - GAP - (Math.sqrt(3) * R) / 2 - (rApprox % 2) * (STEP_X * 0.5)) / STEP_X);
         var best = null, bestD = 1e9;
         for (var dr = -1; dr <= 1; dr++) {
           for (var dc = -1; dc <= 1; dc++) {

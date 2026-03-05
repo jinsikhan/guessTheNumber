@@ -725,27 +725,16 @@
       }
 
       function applyRemove(toRemove) {
+        var scoreAtStart = score;
         var cnt = doRemoveAndRefill(toRemove);
         var baseScore = cnt * 10;
         var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
         score += baseScore + comboBonus;
+        score = Math.min(score, scoreAtStart + POINTS_PER_LEVEL);
         scorePopups.push({ score: baseScore + comboBonus, x: canvas.width / 2, y: canvas.height / 2, start: Date.now() });
         if (cnt >= 6) {
           bigTextUntil = Date.now() + 1000;
           bigText = cnt >= 8 ? '🎉 대박!!' : '대박!';
-        }
-        var chainCount = 0;
-        var maxChain = 12;
-        while (chainCount < maxChain) {
-          var group = findAnyMatch();
-          if (!group || group.length < 3) break;
-          var result = collectToRemove(group);
-          var chainCnt = doRemoveAndRefill(result.toRemove);
-          if (chainCnt <= 0) break;
-          chainCount++;
-          var chainScore = chainCnt * (10 + chainCount * 5);
-          score += chainScore;
-          scorePopups.push({ score: chainScore, x: canvas.width / 2, y: canvas.height / 2 + 30, start: Date.now() });
         }
         if (scoreEl) scoreEl.textContent = score;
         comboShowUntil = Date.now() + 1200;

@@ -417,7 +417,7 @@
         <h1>🍯 벌집 퍼즐</h1>
         <p class="sub">같은 색 벌집을 3개 이상 맞추면 사라져요. 폭탄·미사일을 활용하세요</p>
         <div class="hex-canvas-wrap">
-          <canvas id="hexCanvas" width="400" height="440"></canvas>
+          <canvas id="hexCanvas" width="360" height="420"></canvas>
         </div>
         <div class="hex-info">
           <p>점수: <span id="hexScore">0</span></p>
@@ -453,18 +453,25 @@
       var GAP = 4;
       var COLS = 8;
       var ROWS = 9;
-      var HEX_W = Math.sqrt(3) * R;
-      var HEX_H = 2 * R;
+      var HEX_W = 2 * R;
+      var HEX_H = Math.sqrt(3) * R;
+      var STEP_X = 1.5 * R + GAP;
+      var STEP_Y = HEX_H + GAP;
       var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
       var score = 0;
       var grid = [];
       var BOMB_CHANCE = 0.08;
       var MISSILE_CHANCE = 0.05;
+      var selected = [];
+      var strokeColor = null;
+      var isDragging = false;
 
       function id(r, c) { return r * COLS + c; }
       function neighbors(r, c) {
-        var dc = (r % 2 === 0) ? [-1, 0, -1, 1, -1, 0] : [0, 1, -1, 1, 0, 1];
+        var dcEven = [-1, 0, -1, 1, -1, 0];
+        var dcOdd = [0, 1, -1, 1, 0, 1];
         var dr = [-1, -1, 0, 0, 1, 1];
+        var dc = (r % 2 === 0) ? dcEven : dcOdd;
         var out = [];
         for (var i = 0; i < 6; i++) {
           var nr = r + dr[i], nc = c + dc[i];
@@ -474,29 +481,29 @@
       }
 
       function hexToPixel(r, c) {
-        var x = c * (HEX_W + GAP) + (r % 2) * (HEX_W / 2 + GAP / 2);
-        var y = r * (HEX_H * 0.75 + GAP);
-        return { x: x + HEX_W / 2 + GAP, y: y + HEX_H / 2 + GAP };
+        var x = GAP + R * 0.5 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
+        var y = GAP + R + r * STEP_Y;
+        return { x: x, y: y };
       }
 
       function pixelToHex(px, py) {
-        var c = Math.floor((px - GAP) / (HEX_W + GAP));
-        var r = Math.floor((py - GAP) / (HEX_H * 0.75 + GAP));
+        var cApprox = Math.floor((px - GAP - R * 0.5) / STEP_X);
+        var rApprox = Math.floor((py - GAP - R) / STEP_Y);
         var best = null, bestD = 1e9;
         for (var dr = -1; dr <= 1; dr++) {
           for (var dc = -1; dc <= 1; dc++) {
-            var rr = r + dr, cc = c + dc;
+            var rr = rApprox + dr, cc = cApprox + dc;
             if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) continue;
             var p = hexToPixel(rr, cc);
             var dx = px - p.x, dy = py - p.y;
             var d = Math.sqrt(dx * dx + dy * dy);
-            if (d < R && d < bestD) { bestD = d; best = { r: rr, c: cc }; }
+            if (d <= R * 0.95 && d < bestD) { bestD = d; best = { r: rr, c: cc }; }
           }
         }
         return best;
       }
 
-      function drawHex(x, y, color, isBomb, isMissile) {
+      function drawHex(x, y, color, isBomb, isMissile, isSelected) {
         ctx.beginPath();
         for (var i = 0; i < 6; i++) {
           var a = (Math.PI / 3) * i;
@@ -507,6 +514,11 @@
         ctx.closePath();
         ctx.fillStyle = color;
         ctx.fill();
+        if (isSelected) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
         ctx.strokeStyle = 'rgba(0,0,0,0.4)';
         ctx.lineWidth = 1;
         ctx.stroke();
@@ -609,15 +621,22 @@
           var t = toRemove[i];
           remove(t.r, t.c);
         }
+        // 열마다: 비어 있지 않은 셀만 아래부터 차례로 채우고, 빈 자리(위쪽)만 새 벌집으로 채움
         for (var c = 0; c < COLS; c++) {
-          var write = ROWS - 1;
+          var cells = [];
           for (var r = ROWS - 1; r >= 0; r--) {
-            if (get(r, c)) {
-              if (write !== r) { set(write, c, get(r, c)); remove(r, c); }
-              write--;
+            var cell = get(r, c);
+            if (cell) cells.push(cell);
+          }
+          var idx = 0;
+          for (var r = ROWS - 1; r >= 0; r--) {
+            if (idx < cells.length) {
+              set(r, c, cells[idx]);
+              idx++;
+            } else {
+              set(r, c, randCell());
             }
           }
-          while (write >= 0) { set(write, c, randCell()); write--; }
         }
         score += toRemove.length * 10;
         if (scoreEl) scoreEl.textContent = score;
@@ -631,38 +650,93 @@
             var cell = get(r, c);
             if (!cell) continue;
             var p = hexToPixel(r, c);
-            drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile);
+            var isSel = selected.some(function (s) { return s.r === r && s.c === c; });
+            drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile, isSel);
           }
         }
       }
 
-      function onClick(px, py) {
+      function isInSelected(r, c) {
+        return selected.some(function (s) { return s.r === r && s.c === c; });
+      }
+
+      function isAdjacentToSelected(r, c) {
+        for (var i = 0; i < selected.length; i++) {
+          var nb = neighbors(selected[i].r, selected[i].c);
+          for (var j = 0; j < nb.length; j++)
+            if (nb[j].r === r && nb[j].c === c) return true;
+        }
+        return false;
+      }
+
+      function getCoords(e, touch) {
+        var rect = canvas.getBoundingClientRect();
+        var scaleX = canvas.width / rect.width;
+        var scaleY = canvas.height / rect.height;
+        var clientX = touch ? e.touches[0].clientX : e.clientX;
+        var clientY = touch ? e.touches[0].clientY : e.clientY;
+        return { px: (clientX - rect.left) * scaleX, py: (clientY - rect.top) * scaleY };
+      }
+
+      function onPointerDown(px, py) {
         var h = pixelToHex(px, py);
         if (!h) return;
-        var group = findGroup(h.r, h.c);
-        if (group.length < 3) return;
-        var toRemove = collectToRemove(group);
-        applyRemove(toRemove);
+        var cell = get(h.r, h.c);
+        if (!cell) return;
+        selected = [];
+        strokeColor = cell.color;
+        selected.push({ r: h.r, c: h.c });
+        isDragging = true;
         draw();
       }
 
-      canvas.addEventListener('click', function (e) {
-        var rect = canvas.getBoundingClientRect();
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        var px = (e.clientX - rect.left) * scaleX;
-        var py = (e.clientY - rect.top) * scaleY;
-        onClick(px, py);
+      function onPointerMove(px, py) {
+        if (!isDragging || !strokeColor) return;
+        var h = pixelToHex(px, py);
+        if (!h) return;
+        var cell = get(h.r, h.c);
+        if (!cell || cell.color !== strokeColor) return;
+        if (isInSelected(h.r, h.c)) return;
+        if (!isAdjacentToSelected(h.r, h.c)) return;
+        selected.push({ r: h.r, c: h.c });
+        draw();
+      }
+
+      function onPointerUp() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (selected.length >= 3) {
+          var toRemove = collectToRemove(selected);
+          applyRemove(toRemove);
+        }
+        selected = [];
+        strokeColor = null;
+        draw();
+      }
+
+      canvas.addEventListener('mousedown', function (e) {
+        var co = getCoords(e, false);
+        onPointerDown(co.px, co.py);
       });
+      canvas.addEventListener('mousemove', function (e) {
+        var co = getCoords(e, false);
+        onPointerMove(co.px, co.py);
+      });
+      canvas.addEventListener('mouseup', function () { onPointerUp(); });
+      canvas.addEventListener('mouseleave', function () { onPointerUp(); });
       canvas.addEventListener('touchstart', function (e) {
         e.preventDefault();
-        var rect = canvas.getBoundingClientRect();
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        var t = e.touches[0];
-        var px = (t.clientX - rect.left) * scaleX;
-        var py = (t.clientY - rect.top) * scaleY;
-        onClick(px, py);
+        var co = getCoords(e, true);
+        onPointerDown(co.px, co.py);
+      }, { passive: false });
+      canvas.addEventListener('touchmove', function (e) {
+        e.preventDefault();
+        var co = getCoords(e, true);
+        onPointerMove(co.px, co.py);
+      }, { passive: false });
+      canvas.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        onPointerUp();
       }, { passive: false });
 
       initGrid();

@@ -473,7 +473,7 @@
       var grid = [];
       var BOMB_CHANCE = 0.06;
       var MISSILE_CHANCE = 0.04;
-      function getItemThreshold() { return 35 + level * 12; }
+      function getItemThreshold() { return 6 + level * 4; }
       var selected = [];
       var strokeColor = null;
       var isDragging = false;
@@ -551,12 +551,12 @@
       }
 
       function getGridSize(lv) {
-        if (lv <= 1) return { rows: 6, cols: 6 };
-        if (lv === 2) return { rows: 6, cols: 7 };
-        if (lv === 3) return { rows: 7, cols: 7 };
-        if (lv === 4) return { rows: 7, cols: 8 };
-        if (lv === 5) return { rows: 8, cols: 8 };
-        return { rows: 9, cols: 8 };
+        if (lv <= 1) return { rows: 8, cols: 7 };
+        if (lv === 2) return { rows: 8, cols: 8 };
+        if (lv === 3) return { rows: 9, cols: 8 };
+        if (lv === 4) return { rows: 9, cols: 9 };
+        if (lv === 5) return { rows: 10, cols: 9 };
+        return { rows: 10, cols: 10 };
       }
 
       function applyGridSize() {

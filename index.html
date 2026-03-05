@@ -420,7 +420,7 @@
           <canvas id="hexCanvas" width="360" height="420"></canvas>
         </div>
         <div class="hex-info">
-          <p>점수: <span id="hexScore">0</span></p>
+          <p>레벨 <span id="hexLevel">1</span> &nbsp;|&nbsp; 점수: <span id="hexScore">0</span></p>
         </div>
       </div>
     </div>
@@ -449,6 +449,7 @@
       if (!canvas || !canvas.getContext) return;
       var ctx = canvas.getContext('2d');
       var scoreEl = document.getElementById('hexScore');
+      var levelEl = document.getElementById('hexLevel');
       var R = 20;
       var GAP = 4;
       var COLS = 8;
@@ -459,12 +460,18 @@
       var STEP_Y = HEX_H + GAP;
       var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
       var score = 0;
+      var level = 1;
+      var POINTS_PER_LEVEL = 200;
+      var levelUpUntil = 0;
       var grid = [];
       var BOMB_CHANCE = 0.08;
       var MISSILE_CHANCE = 0.05;
       var selected = [];
       var strokeColor = null;
       var isDragging = false;
+      var hexAnim = null;
+      var BOMB_ANIM_MS = 480;
+      var MISSILE_ANIM_MS = 420;
 
       function id(r, c) { return r * COLS + c; }
       function neighbors(r, c) {
@@ -544,11 +551,17 @@
         }
       }
 
+      function getColorsForLevel(lv) {
+        var n = Math.min(2 + lv, 6);
+        return HEX_COLORS.slice(0, n);
+      }
+
       function randCell() {
+        var colors = getColorsForLevel(level);
         var isBomb = Math.random() < BOMB_CHANCE;
         var isMissile = !isBomb && Math.random() < MISSILE_CHANCE;
-        var colorIdx = Math.floor(Math.random() * HEX_COLORS.length);
-        return { color: HEX_COLORS[colorIdx], bomb: isBomb, missile: isMissile };
+        var colorIdx = Math.floor(Math.random() * colors.length);
+        return { color: colors[colorIdx], bomb: isBomb, missile: isMissile };
       }
 
       function get(r, c) { return grid[r * COLS + c]; }
@@ -582,8 +595,8 @@
         for (var i = 0; i < group.length; i++) {
           var g = group[i];
           var cell = get(g.r, g.c);
-          if (cell.bomb) { hasBomb = true; bombPos = g; }
-          if (cell.missile) { hasMissile = true; missilePos = g; }
+          if (cell.bomb) { hasBomb = true; bombPos = { r: g.r, c: g.c }; }
+          if (cell.missile) { hasMissile = true; missilePos = { r: g.r, c: g.c }; }
           toRemove.push({ r: g.r, c: g.c });
         }
         if (hasBomb && bombPos) {
@@ -606,7 +619,7 @@
             if (!already) toRemove.push({ r: rr, c: missilePos.c });
           }
         }
-        return toRemove;
+        return { toRemove: toRemove, bombPos: bombPos, missilePos: missilePos };
       }
 
       function applyRemove(toRemove) {
@@ -621,7 +634,8 @@
           var t = toRemove[i];
           remove(t.r, t.c);
         }
-        // 열마다: 비어 있지 않은 셀만 아래부터 차례로 채우고, 빈 자리(위쪽)만 새 벌집으로 채움
+        // 새 그리드에만 쓰기 → 읽기/쓰기 겹침 없이 빈 칸만 채움
+        var newGrid = [];
         for (var c = 0; c < COLS; c++) {
           var cells = [];
           for (var r = ROWS - 1; r >= 0; r--) {
@@ -631,15 +645,28 @@
           var idx = 0;
           for (var r = ROWS - 1; r >= 0; r--) {
             if (idx < cells.length) {
-              set(r, c, cells[idx]);
+              newGrid[r * COLS + c] = cells[idx];
               idx++;
             } else {
-              set(r, c, randCell());
+              newGrid[r * COLS + c] = randCell();
             }
           }
         }
+        for (var i = 0; i < ROWS * COLS; i++) grid[i] = newGrid[i];
         score += toRemove.length * 10;
         if (scoreEl) scoreEl.textContent = score;
+        var newLevel = 1 + Math.floor(score / POINTS_PER_LEVEL);
+        if (newLevel > level) {
+          level = newLevel;
+          if (levelEl) levelEl.textContent = level;
+          levelUpUntil = Date.now() + 1500;
+          levelUpDrawLoop();
+        }
+      }
+
+      function levelUpDrawLoop() {
+        draw();
+        if (Date.now() < levelUpUntil) requestAnimationFrame(levelUpDrawLoop);
       }
 
       function draw() {
@@ -653,6 +680,86 @@
             var isSel = selected.some(function (s) { return s.r === r && s.c === c; });
             drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile, isSel);
           }
+        }
+        if (Date.now() < levelUpUntil) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#f1c40f';
+          ctx.font = 'bold 28px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⭐ 레벨 ' + level + ' ⭐', canvas.width / 2, canvas.height / 2);
+          ctx.restore();
+        }
+      }
+
+      function drawBombAnim(bombPos, elapsed) {
+        var p = hexToPixel(bombPos.r, bombPos.c);
+        var t = Math.min(1, elapsed / BOMB_ANIM_MS);
+        var radius = R * (1 + t * 4);
+        var alpha = 1 - t * 1.2;
+        if (alpha <= 0) return;
+        ctx.save();
+        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        g.addColorStop(0, 'rgba(255,180,50,' + (alpha * 0.9) + ')');
+        g.addColorStop(0.4, 'rgba(230,80,30,' + (alpha * 0.6) + ')');
+        g.addColorStop(0.8, 'rgba(180,30,10,' + (alpha * 0.3) + ')');
+        g.addColorStop(1, 'rgba(80,10,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawMissileAnim(missilePos, elapsed) {
+        var p = hexToPixel(missilePos.r, missilePos.c);
+        var t = Math.min(1, elapsed / MISSILE_ANIM_MS);
+        var alpha = 1 - t * 0.7;
+        var thick = 8 + (1 - t) * 12;
+        if (alpha <= 0) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(100,200,255,' + alpha + ')';
+        ctx.lineWidth = thick;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, p.y);
+        ctx.lineTo(canvas.width, p.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p.x, 0);
+        ctx.lineTo(p.x, canvas.height);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,' + alpha * 0.8 + ')';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, p.y);
+        ctx.lineTo(canvas.width, p.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p.x, 0);
+        ctx.lineTo(p.x, canvas.height);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function animateHex() {
+        if (!hexAnim) return;
+        var elapsed = Date.now() - hexAnim.start;
+        var duration = 0;
+        if (hexAnim.bombPos) duration = Math.max(duration, BOMB_ANIM_MS);
+        if (hexAnim.missilePos) duration = Math.max(duration, MISSILE_ANIM_MS);
+        if (duration === 0) duration = 300;
+        draw();
+        if (hexAnim.bombPos) drawBombAnim(hexAnim.bombPos, elapsed);
+        if (hexAnim.missilePos) drawMissileAnim(hexAnim.missilePos, elapsed);
+        if (elapsed < duration) {
+          requestAnimationFrame(animateHex);
+        } else {
+          applyRemove(hexAnim.toRemove);
+          hexAnim = null;
+          draw();
         }
       }
 
@@ -706,8 +813,14 @@
         if (!isDragging) return;
         isDragging = false;
         if (selected.length >= 3) {
-          var toRemove = collectToRemove(selected);
-          applyRemove(toRemove);
+          var result = collectToRemove(selected);
+          var toRemove = result.toRemove;
+          if (result.bombPos || result.missilePos) {
+            hexAnim = { start: Date.now(), bombPos: result.bombPos, missilePos: result.missilePos, toRemove: toRemove };
+            requestAnimationFrame(animateHex);
+          } else {
+            applyRemove(toRemove);
+          }
         }
         selected = [];
         strokeColor = null;

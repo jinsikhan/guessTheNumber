@@ -581,40 +581,70 @@
       var startBtn = document.getElementById('brickStart');
 
       var BRICK_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
-      var COLS = 8;
-      var ROWS = 5;
-      var BRICK_W = 44;
-      var BRICK_H = 18;
-      var BRICK_PAD = 4;
+      var COLS = 10;
+      var ROWS = 6;
+      var BRICK_W = 35;
+      var BRICK_H = 16;
+      var BRICK_PAD = 5;
       var PADDLE_W = 80;
+      var PADDLE_W_WIDE = 120;
       var PADDLE_H = 12;
       var BALL_R = 6;
       var PADDLE_Y = canvas.height - 30;
+      var ITEM_DROP_CHANCE = 0.28;
+      var ITEM_SIZE = 14;
+      var ITEM_FALL = 2.5;
+      var ITEM_TYPES = [
+        { id: 'expand', color: '#3498db', label: 'W' },
+        { id: 'life', color: '#2ecc71', label: '+1' },
+        { id: 'slow', color: '#9b59b6', label: 'S' },
+        { id: 'score', color: '#f1c40f', label: '50' }
+      ];
 
       var bricks = [];
+      var items = [];
       var paddleX = (canvas.width - PADDLE_W) / 2;
+      var currentPaddleW = PADDLE_W;
+      var paddleExpandUntil = 0;
+      var ballSlowUntil = 0;
       var ballX = canvas.width / 2;
       var ballY = PADDLE_Y - BALL_R - 2;
       var ballDX = 4;
       var ballDY = -4;
+      var ballSpeedMult = 1;
       var score = 0;
       var lives = 3;
       var running = false;
       var animId = null;
+      var frameCount = 0;
 
       function initBricks() {
         bricks = [];
+        items = [];
         for (var row = 0; row < ROWS; row++) {
           for (var col = 0; col < COLS; col++) {
             bricks.push({
               x: BRICK_PAD + col * (BRICK_W + BRICK_PAD),
-              y: 60 + row * (BRICK_H + BRICK_PAD),
+              y: 50 + row * (BRICK_H + BRICK_PAD),
               w: BRICK_W,
               h: BRICK_H,
               color: BRICK_COLORS[row % BRICK_COLORS.length]
             });
           }
         }
+      }
+
+      function spawnItem(brick) {
+        if (Math.random() > ITEM_DROP_CHANCE) return;
+        var typeIdx = Math.floor(Math.random() * ITEM_TYPES.length);
+        var t = ITEM_TYPES[typeIdx];
+        items.push({
+          x: brick.x + brick.w / 2 - ITEM_SIZE / 2,
+          y: brick.y + brick.h / 2 - ITEM_SIZE / 2,
+          type: t.id,
+          color: t.color,
+          label: t.label
+        });
       }
 
       function draw() {
@@ -628,8 +658,24 @@
           ctx.strokeRect(b.x, b.y, b.w, b.h);
         });
 
+        items.forEach(function (it) {
+          ctx.fillStyle = it.color;
+          ctx.fillRect(it.x, it.y, ITEM_SIZE, ITEM_SIZE);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(it.x, it.y, ITEM_SIZE, ITEM_SIZE);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(it.label, it.x + ITEM_SIZE / 2, it.y + ITEM_SIZE / 2);
+        });
+
+        var pw = currentPaddleW;
+        var px = paddleX + (currentPaddleW - pw) / 2;
+        if (pw > PADDLE_W) px = paddleX - (pw - PADDLE_W) / 2;
         ctx.fillStyle = '#e94560';
-        ctx.fillRect(paddleX, PADDLE_Y, PADDLE_W, PADDLE_H);
+        ctx.fillRect(px, PADDLE_Y, pw, PADDLE_H);
 
         ctx.fillStyle = '#fff';
         ctx.beginPath();
@@ -639,16 +685,29 @@
 
       function update() {
         if (!running) return;
-        ballX += ballDX;
-        ballY += ballDY;
+        frameCount++;
+        ballX += ballDX * ballSpeedMult;
+        ballY += ballDY * ballSpeedMult;
+
+        if (paddleExpandUntil > 0 && frameCount >= paddleExpandUntil) {
+          currentPaddleW = PADDLE_W;
+          paddleExpandUntil = 0;
+        }
+        if (ballSlowUntil > 0 && frameCount >= ballSlowUntil) {
+          ballSpeedMult = 1;
+          ballSlowUntil = 0;
+        }
 
         if (ballX - BALL_R <= 0 || ballX + BALL_R >= canvas.width) ballDX = -ballDX;
         if (ballY - BALL_R <= 0) ballDY = -ballDY;
 
+        var pw = currentPaddleW;
+        var px = paddleX;
+        if (pw > PADDLE_W) px = paddleX - (pw - PADDLE_W) / 2;
         if (ballY + BALL_R >= PADDLE_Y && ballY - BALL_R <= PADDLE_Y + PADDLE_H &&
-            ballX >= paddleX && ballX <= paddleX + PADDLE_W) {
+            ballX >= px && ballX <= px + pw) {
           ballDY = -Math.abs(ballDY);
-          var hitPos = (ballX - paddleX) / PADDLE_W;
+          var hitPos = (ballX - px) / pw;
           ballDX = (hitPos - 0.5) * 10;
         }
 
@@ -679,6 +738,7 @@
           if (ballX + BALL_R >= b.x && ballX - BALL_R <= b.x + b.w &&
               ballY + BALL_R >= b.y && ballY - BALL_R <= b.y + b.h) {
             ballDY = -ballDY;
+            spawnItem(b);
             bricks.splice(i, 1);
             score += 10;
             scoreEl.textContent = score;
@@ -697,6 +757,35 @@
             break;
           }
         }
+
+        for (var j = items.length - 1; j >= 0; j--) {
+          var it = items[j];
+          it.y += ITEM_FALL;
+          if (it.y > canvas.height) {
+            items.splice(j, 1);
+            continue;
+          }
+          var pwx = currentPaddleW;
+          var pxx = paddleX;
+          if (pwx > PADDLE_W) pxx = paddleX - (pwx - PADDLE_W) / 2;
+          if (it.y + ITEM_SIZE >= PADDLE_Y && it.y <= PADDLE_Y + PADDLE_H &&
+              it.x + ITEM_SIZE >= pxx && it.x <= pxx + pwx) {
+            if (it.type === 'expand') {
+              currentPaddleW = PADDLE_W_WIDE;
+              paddleExpandUntil = frameCount + 600;
+            } else if (it.type === 'life') {
+              lives++;
+              livesEl.textContent = lives;
+            } else if (it.type === 'slow') {
+              ballSpeedMult = 0.6;
+              ballSlowUntil = frameCount + 300;
+            } else if (it.type === 'score') {
+              score += 50;
+              scoreEl.textContent = score;
+            }
+            items.splice(j, 1);
+          }
+        }
       }
 
       function loop() {
@@ -709,6 +798,11 @@
         initBricks();
         score = 0;
         lives = 3;
+        frameCount = 0;
+        currentPaddleW = PADDLE_W;
+        paddleExpandUntil = 0;
+        ballSpeedMult = 1;
+        ballSlowUntil = 0;
         scoreEl.textContent = '0';
         livesEl.textContent = '3';
         paddleX = (canvas.width - PADDLE_W) / 2;

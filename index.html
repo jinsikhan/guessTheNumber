@@ -1138,12 +1138,14 @@
         items = [];
         for (var row = 0; row < ROWS; row++) {
           for (var col = 0; col < COLS; col++) {
+            var isStrong = row >= 2 && Math.random() < 0.35;
             bricks.push({
               x: BRICK_PAD + col * (BRICK_W + BRICK_PAD),
               y: 50 + row * (BRICK_H + BRICK_PAD),
               w: BRICK_W,
               h: BRICK_H,
-              color: BRICK_COLORS[row % BRICK_COLORS.length]
+              color: BRICK_COLORS[row % BRICK_COLORS.length],
+              hp: isStrong ? 2 : 1
             });
           }
         }
@@ -1169,7 +1171,17 @@
         bricks.forEach(function (b) {
           ctx.fillStyle = b.color;
           ctx.fillRect(b.x, b.y, b.w, b.h);
-          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+          if (b.hp >= 2) {
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('2', b.x + b.w / 2, b.y + b.h / 2);
+          }
+          ctx.strokeStyle = b.hp >= 2 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)';
+          ctx.lineWidth = b.hp >= 2 ? 2 : 1;
           ctx.strokeRect(b.x, b.y, b.w, b.h);
         });
 
@@ -1243,23 +1255,26 @@
             if (b.x + BALL_R >= br.x && b.x - BALL_R <= br.x + br.w &&
                 b.y + BALL_R >= br.y && b.y - BALL_R <= br.y + br.h) {
               b.dy = -b.dy;
-              spawnItem(br);
-              bricks.splice(k, 1);
-              score += 10;
-              scoreEl.textContent = score;
-              brickHit = true;
-              if (bricks.length === 0) {
-                running = false;
-                cancelAnimationFrame(animId);
-                ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#2ecc71';
-                ctx.font = 'bold 24px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('클리어!', canvas.width / 2, canvas.height / 2);
-                startBtn.style.display = 'block';
-                startBtn.textContent = '다시 하기';
+              br.hp--;
+              if (br.hp <= 0) {
+                spawnItem(br);
+                bricks.splice(k, 1);
+                score += 10;
+                scoreEl.textContent = score;
+                if (bricks.length === 0) {
+                  running = false;
+                  cancelAnimationFrame(animId);
+                  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.fillStyle = '#2ecc71';
+                  ctx.font = 'bold 24px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.fillText('클리어!', canvas.width / 2, canvas.height / 2);
+                  startBtn.style.display = 'block';
+                  startBtn.textContent = '다시 하기';
+                }
               }
+              brickHit = true;
               break;
             }
           }

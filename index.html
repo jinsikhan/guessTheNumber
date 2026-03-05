@@ -735,11 +735,13 @@
           bigText = cnt >= 8 ? '🎉 대박!!' : '대박!';
         }
         var chainCount = 0;
-        while (true) {
+        var maxChain = 12;
+        while (chainCount < maxChain) {
           var group = findAnyMatch();
           if (!group || group.length < 3) break;
           var result = collectToRemove(group);
           var chainCnt = doRemoveAndRefill(result.toRemove);
+          if (chainCnt <= 0) break;
           chainCount++;
           var chainScore = chainCnt * (10 + chainCount * 5);
           score += chainScore;

@@ -1115,7 +1115,8 @@
         { id: 'expand', color: '#3498db', label: 'W' },
         { id: 'life', color: '#2ecc71', label: '+1' },
         { id: 'slow', color: '#9b59b6', label: 'S' },
-        { id: 'score', color: '#f1c40f', label: '50' }
+        { id: 'score', color: '#f1c40f', label: '50' },
+        { id: 'multi', color: '#e67e22', label: '★' }
       ];
 
       var bricks = [];
@@ -1124,10 +1125,7 @@
       var currentPaddleW = PADDLE_W;
       var paddleExpandUntil = 0;
       var ballSlowUntil = 0;
-      var ballX = canvas.width / 2;
-      var ballY = PADDLE_Y - BALL_R - 2;
-      var ballDX = 4;
-      var ballDY = -4;
+      var balls = [];
       var ballSpeedMult = 1;
       var score = 0;
       var lives = 3;
@@ -1194,17 +1192,20 @@
         ctx.fillStyle = '#e94560';
         ctx.fillRect(px, PADDLE_Y, pw, PADDLE_H);
 
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(ballX, ballY, BALL_R, 0, Math.PI * 2);
-        ctx.fill();
+        balls.forEach(function (b) {
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2);
+          ctx.fill();
+        });
       }
 
       function update() {
         if (!running) return;
         frameCount++;
-        ballX += ballDX * ballSpeedMult;
-        ballY += ballDY * ballSpeedMult;
+        var pw = currentPaddleW;
+        var px = paddleX;
+        if (pw > PADDLE_W) px = paddleX - (pw - PADDLE_W) / 2;
 
         if (paddleExpandUntil > 0 && frameCount >= paddleExpandUntil) {
           currentPaddleW = PADDLE_W;
@@ -1215,20 +1216,57 @@
           ballSlowUntil = 0;
         }
 
-        if (ballX - BALL_R <= 0 || ballX + BALL_R >= canvas.width) ballDX = -ballDX;
-        if (ballY - BALL_R <= 0) ballDY = -ballDY;
+        var i = 0;
+        while (i < balls.length) {
+          var b = balls[i];
+          b.x += b.dx * ballSpeedMult;
+          b.y += b.dy * ballSpeedMult;
 
-        var pw = currentPaddleW;
-        var px = paddleX;
-        if (pw > PADDLE_W) px = paddleX - (pw - PADDLE_W) / 2;
-        if (ballY + BALL_R >= PADDLE_Y && ballY - BALL_R <= PADDLE_Y + PADDLE_H &&
-            ballX >= px && ballX <= px + pw) {
-          ballDY = -Math.abs(ballDY);
-          var hitPos = (ballX - px) / pw;
-          ballDX = (hitPos - 0.5) * 10;
+          if (b.x - BALL_R <= 0 || b.x + BALL_R >= canvas.width) b.dx = -b.dx;
+          if (b.y - BALL_R <= 0) b.dy = -b.dy;
+
+          if (b.y + BALL_R >= PADDLE_Y && b.y - BALL_R <= PADDLE_Y + PADDLE_H &&
+              b.x >= px && b.x <= px + pw) {
+            b.dy = -Math.abs(b.dy);
+            var hitPos = (b.x - px) / pw;
+            b.dx = (hitPos - 0.5) * 10;
+          }
+
+          if (b.y - BALL_R > canvas.height) {
+            balls.splice(i, 1);
+            continue;
+          }
+
+          var brickHit = false;
+          for (var k = bricks.length - 1; k >= 0; k--) {
+            var br = bricks[k];
+            if (b.x + BALL_R >= br.x && b.x - BALL_R <= br.x + br.w &&
+                b.y + BALL_R >= br.y && b.y - BALL_R <= br.y + br.h) {
+              b.dy = -b.dy;
+              spawnItem(br);
+              bricks.splice(k, 1);
+              score += 10;
+              scoreEl.textContent = score;
+              brickHit = true;
+              if (bricks.length === 0) {
+                running = false;
+                cancelAnimationFrame(animId);
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#2ecc71';
+                ctx.font = 'bold 24px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('클리어!', canvas.width / 2, canvas.height / 2);
+                startBtn.style.display = 'block';
+                startBtn.textContent = '다시 하기';
+              }
+              break;
+            }
+          }
+          i++;
         }
 
-        if (ballY - BALL_R > canvas.height) {
+        if (balls.length === 0) {
           lives--;
           livesEl.textContent = lives;
           if (lives <= 0) {
@@ -1244,35 +1282,8 @@
             startBtn.textContent = '다시 하기';
             return;
           }
-          ballX = canvas.width / 2;
-          ballY = PADDLE_Y - BALL_R - 2;
-          ballDX = 4;
-          ballDY = -4;
-        }
-
-        for (var i = bricks.length - 1; i >= 0; i--) {
-          var b = bricks[i];
-          if (ballX + BALL_R >= b.x && ballX - BALL_R <= b.x + b.w &&
-              ballY + BALL_R >= b.y && ballY - BALL_R <= b.y + b.h) {
-            ballDY = -ballDY;
-            spawnItem(b);
-            bricks.splice(i, 1);
-            score += 10;
-            scoreEl.textContent = score;
-            if (bricks.length === 0) {
-              running = false;
-              cancelAnimationFrame(animId);
-              ctx.fillStyle = 'rgba(0,0,0,0.7)';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              ctx.fillStyle = '#2ecc71';
-              ctx.font = 'bold 24px sans-serif';
-              ctx.textAlign = 'center';
-              ctx.fillText('클리어!', canvas.width / 2, canvas.height / 2);
-              startBtn.style.display = 'block';
-              startBtn.textContent = '다시 하기';
-            }
-            break;
-          }
+          var cx = canvas.width / 2;
+          balls.push({ x: cx, y: PADDLE_Y - BALL_R - 2, dx: 4, dy: -4 });
         }
 
         for (var j = items.length - 1; j >= 0; j--) {
@@ -1299,6 +1310,12 @@
             } else if (it.type === 'score') {
               score += 50;
               scoreEl.textContent = score;
+            } else if (it.type === 'multi') {
+              var centerX = pxx + pwx / 2;
+              var baseSpeed = 4;
+              balls.push({ x: centerX, y: PADDLE_Y - BALL_R - 2, dx: -3, dy: -baseSpeed });
+              balls.push({ x: centerX, y: PADDLE_Y - BALL_R - 2, dx: 0, dy: -baseSpeed });
+              balls.push({ x: centerX, y: PADDLE_Y - BALL_R - 2, dx: 3, dy: -baseSpeed });
             }
             items.splice(j, 1);
           }
@@ -1323,10 +1340,7 @@
         scoreEl.textContent = '0';
         livesEl.textContent = '3';
         paddleX = (canvas.width - PADDLE_W) / 2;
-        ballX = canvas.width / 2;
-        ballY = PADDLE_Y - BALL_R - 2;
-        ballDX = 4;
-        ballDY = -4;
+        balls = [{ x: canvas.width / 2, y: PADDLE_Y - BALL_R - 2, dx: 4, dy: -4 }];
         startBtn.style.display = 'none';
         running = true;
         loop();

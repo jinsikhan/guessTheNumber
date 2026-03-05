@@ -464,14 +464,16 @@
       var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c'];
       var score = 0;
       var level = 1;
-      var POINTS_PER_LEVEL = 200;
+      var POINTS_PER_LEVEL = 450;
+      var totalRemoved = 0;
       var levelUpUntil = 0;
       var comboCount = 0;
       var comboShowUntil = 0;
       var matchFlashUntil = 0;
       var grid = [];
-      var BOMB_CHANCE = 0.08;
-      var MISSILE_CHANCE = 0.05;
+      var BOMB_CHANCE = 0.06;
+      var MISSILE_CHANCE = 0.04;
+      function getItemThreshold() { return 35 + level * 12; }
       var selected = [];
       var strokeColor = null;
       var isDragging = false;
@@ -548,6 +550,21 @@
         }
       }
 
+      function getGridSize(lv) {
+        if (lv <= 1) return { rows: 6, cols: 6 };
+        if (lv === 2) return { rows: 6, cols: 7 };
+        if (lv === 3) return { rows: 7, cols: 7 };
+        if (lv === 4) return { rows: 7, cols: 8 };
+        if (lv === 5) return { rows: 8, cols: 8 };
+        return { rows: 9, cols: 8 };
+      }
+
+      function applyGridSize() {
+        var sz = getGridSize(level);
+        ROWS = sz.rows;
+        COLS = sz.cols;
+      }
+
       function initGrid() {
         grid = [];
         for (var r = 0; r < ROWS; r++) {
@@ -564,8 +581,9 @@
 
       function randCell() {
         var colors = getColorsForLevel(level);
-        var isBomb = Math.random() < BOMB_CHANCE;
-        var isMissile = !isBomb && Math.random() < MISSILE_CHANCE;
+        var allowItem = totalRemoved >= getItemThreshold();
+        var isBomb = allowItem && Math.random() < BOMB_CHANCE;
+        var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE;
         var colorIdx = Math.floor(Math.random() * colors.length);
         return { color: colors[colorIdx], bomb: isBomb, missile: isMissile };
       }
@@ -659,6 +677,7 @@
           }
         }
         for (var i = 0; i < ROWS * COLS; i++) grid[i] = newGrid[i];
+        totalRemoved += toRemove.length;
         var baseScore = toRemove.length * 10;
         var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
         score += baseScore + comboBonus;
@@ -670,6 +689,8 @@
         var newLevel = 1 + Math.floor(score / POINTS_PER_LEVEL);
         if (newLevel > level) {
           level = newLevel;
+          applyGridSize();
+          initGrid();
           if (levelEl) levelEl.textContent = level;
           if (nextEl) nextEl.textContent = Math.max(0, level * POINTS_PER_LEVEL - score);
           levelUpUntil = Date.now() + 1500;
@@ -897,6 +918,7 @@
         onPointerUp();
       }, { passive: false });
 
+      applyGridSize();
       initGrid();
       draw();
     })();

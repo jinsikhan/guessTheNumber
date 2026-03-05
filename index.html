@@ -519,7 +519,7 @@
       function drawHex(x, y, color, isBomb, isMissile, isSelected) {
         ctx.beginPath();
         for (var i = 0; i < 6; i++) {
-          var a = (Math.PI / 3) * i;
+          var a = Math.PI / 2 + (Math.PI / 3) * i;
           var hx = x + R * Math.cos(a), hy = y + R * Math.sin(a);
           if (i === 0) ctx.moveTo(hx, hy);
           else ctx.lineTo(hx, hy);

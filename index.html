@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>숫자 맞추기 게임</title>
+  <title>미니 게임</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
@@ -236,9 +236,97 @@
       background: #e94560;
       color: #fff;
     }
+    /* 탭 */
+    .app-wrap {
+      width: 100%;
+      max-width: 480px;
+    }
+    .tab-buttons {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 0.9rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      background: rgba(255,255,255,0.08);
+      color: #888;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s, color 0.2s;
+    }
+    .tab-btn:hover {
+      background: rgba(255,255,255,0.12);
+      color: #ccc;
+    }
+    .tab-btn.active {
+      background: rgba(255, 255, 255, 0.06);
+      color: #e94560;
+    }
+    .tab-panel {
+      display: none;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 0 0 20px 20px;
+      padding: 2.5rem;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    /* 벽돌깨기 */
+    .brick-wrap {
+      text-align: center;
+    }
+    .brick-wrap h1 {
+      margin-bottom: 0.5rem;
+    }
+    .brick-wrap .sub {
+      margin-bottom: 1rem;
+    }
+    .brick-canvas-wrap {
+      margin: 1rem auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0d0d14;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    #brickCanvas {
+      display: block;
+      margin: 0 auto;
+    }
+    .brick-info {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      color: #aaa;
+    }
+    .brick-info span {
+      color: #f1c40f;
+      font-weight: 700;
+    }
+    .brick-start {
+      margin-top: 1rem;
+      width: 100%;
+    }
   </style>
 </head>
 <body>
+  <div class="app-wrap">
+    <div class="tab-buttons">
+      <button type="button" class="tab-btn active" data-tab="guess">🔢 숫자 맞추기</button>
+      <button type="button" class="tab-btn" data-tab="brick">🧱 벽돌 깨기</button>
+    </div>
+
+    <div id="panel-guess" class="tab-panel active">
   <div class="game">
     <h1>🔢 숫자 맞추기</h1>
     <p class="sub">숫자를 맞춰보세요</p>
@@ -263,9 +351,41 @@
     <p class="best">최고 기록: <span id="best">-</span></p>
     <button type="button" class="again" id="again" style="display: none;">다시 하기</button>
   </div>
+    </div>
+
+    <div id="panel-brick" class="tab-panel">
+      <div class="brick-wrap">
+        <h1>🧱 벽돌 깨기</h1>
+        <p class="sub">패들을 움직여 공을 받고 벽돌을 모두 깨세요</p>
+        <div class="brick-canvas-wrap">
+          <canvas id="brickCanvas" width="400" height="480"></canvas>
+        </div>
+        <div class="brick-info">
+          <p>점수: <span id="brickScore">0</span></p>
+          <p>목숨: <span id="brickLives">3</span></p>
+        </div>
+        <button type="button" class="again brick-start" id="brickStart">시작하기</button>
+      </div>
+    </div>
+  </div>
 
   <div class="countdown-pop" id="countdownPop" aria-hidden="true"></div>
 
+  <script>
+    (function () {
+      var tabBtns = document.querySelectorAll('.tab-btn');
+      var panels = document.querySelectorAll('.tab-panel');
+      tabBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tab = btn.getAttribute('data-tab');
+          tabBtns.forEach(function (b) { b.classList.remove('active'); });
+          panels.forEach(function (p) { p.classList.remove('active'); });
+          btn.classList.add('active');
+          document.getElementById('panel-' + tab).classList.add('active');
+        });
+      });
+    })();
+  </script>
   <script>
     (function () {
       var DIFF = {
@@ -441,8 +561,7 @@
         guessInput.focus();
       }
 
-      submitBtn.addEventListener('click', checkGuess);
-      guessInput.addEventListener('keydown', function (e) {
+      submitBtn.addEventListener('click', checkGuess);      guessInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') checkGuess();
       });
       againBtn.addEventListener('click', startGame);
@@ -451,6 +570,169 @@
       document.getElementById('btn-hard').addEventListener('click', function () { setDifficulty('hard'); });
 
       startGame();
+    })();
+  </script>
+  <script>
+    (function () {
+      var canvas = document.getElementById('brickCanvas');
+      var ctx = canvas.getContext('2d');
+      var scoreEl = document.getElementById('brickScore');
+      var livesEl = document.getElementById('brickLives');
+      var startBtn = document.getElementById('brickStart');
+
+      var BRICK_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
+      var COLS = 8;
+      var ROWS = 5;
+      var BRICK_W = 44;
+      var BRICK_H = 18;
+      var BRICK_PAD = 4;
+      var PADDLE_W = 80;
+      var PADDLE_H = 12;
+      var BALL_R = 6;
+      var PADDLE_Y = canvas.height - 30;
+
+      var bricks = [];
+      var paddleX = (canvas.width - PADDLE_W) / 2;
+      var ballX = canvas.width / 2;
+      var ballY = PADDLE_Y - BALL_R - 2;
+      var ballDX = 4;
+      var ballDY = -4;
+      var score = 0;
+      var lives = 3;
+      var running = false;
+      var animId = null;
+
+      function initBricks() {
+        bricks = [];
+        for (var row = 0; row < ROWS; row++) {
+          for (var col = 0; col < COLS; col++) {
+            bricks.push({
+              x: BRICK_PAD + col * (BRICK_W + BRICK_PAD),
+              y: 60 + row * (BRICK_H + BRICK_PAD),
+              w: BRICK_W,
+              h: BRICK_H,
+              color: BRICK_COLORS[row % BRICK_COLORS.length]
+            });
+          }
+        }
+      }
+
+      function draw() {
+        ctx.fillStyle = '#0d0d14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        bricks.forEach(function (b) {
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+          ctx.strokeRect(b.x, b.y, b.w, b.h);
+        });
+
+        ctx.fillStyle = '#e94560';
+        ctx.fillRect(paddleX, PADDLE_Y, PADDLE_W, PADDLE_H);
+
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, BALL_R, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function update() {
+        if (!running) return;
+        ballX += ballDX;
+        ballY += ballDY;
+
+        if (ballX - BALL_R <= 0 || ballX + BALL_R >= canvas.width) ballDX = -ballDX;
+        if (ballY - BALL_R <= 0) ballDY = -ballDY;
+
+        if (ballY + BALL_R >= PADDLE_Y && ballY - BALL_R <= PADDLE_Y + PADDLE_H &&
+            ballX >= paddleX && ballX <= paddleX + PADDLE_W) {
+          ballDY = -Math.abs(ballDY);
+          var hitPos = (ballX - paddleX) / PADDLE_W;
+          ballDX = (hitPos - 0.5) * 10;
+        }
+
+        if (ballY - BALL_R > canvas.height) {
+          lives--;
+          livesEl.textContent = lives;
+          if (lives <= 0) {
+            running = false;
+            cancelAnimationFrame(animId);
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('게임 오버', canvas.width / 2, canvas.height / 2);
+            startBtn.style.display = 'block';
+            startBtn.textContent = '다시 하기';
+            return;
+          }
+          ballX = canvas.width / 2;
+          ballY = PADDLE_Y - BALL_R - 2;
+          ballDX = 4;
+          ballDY = -4;
+        }
+
+        for (var i = bricks.length - 1; i >= 0; i--) {
+          var b = bricks[i];
+          if (ballX + BALL_R >= b.x && ballX - BALL_R <= b.x + b.w &&
+              ballY + BALL_R >= b.y && ballY - BALL_R <= b.y + b.h) {
+            ballDY = -ballDY;
+            bricks.splice(i, 1);
+            score += 10;
+            scoreEl.textContent = score;
+            if (bricks.length === 0) {
+              running = false;
+              cancelAnimationFrame(animId);
+              ctx.fillStyle = 'rgba(0,0,0,0.7)';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.fillStyle = '#2ecc71';
+              ctx.font = 'bold 24px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText('클리어!', canvas.width / 2, canvas.height / 2);
+              startBtn.style.display = 'block';
+              startBtn.textContent = '다시 하기';
+            }
+            break;
+          }
+        }
+      }
+
+      function loop() {
+        update();
+        draw();
+        if (running) animId = requestAnimationFrame(loop);
+      }
+
+      function startBrickGame() {
+        initBricks();
+        score = 0;
+        lives = 3;
+        scoreEl.textContent = '0';
+        livesEl.textContent = '3';
+        paddleX = (canvas.width - PADDLE_W) / 2;
+        ballX = canvas.width / 2;
+        ballY = PADDLE_Y - BALL_R - 2;
+        ballDX = 4;
+        ballDY = -4;
+        startBtn.style.display = 'none';
+        running = true;
+        loop();
+      }
+
+      canvas.addEventListener('mousemove', function (e) {
+        var rect = canvas.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var scale = canvas.width / rect.width;
+        paddleX = (x * scale) - PADDLE_W / 2;
+        if (paddleX < 0) paddleX = 0;
+        if (paddleX > canvas.width - PADDLE_W) paddleX = canvas.width - PADDLE_W;
+      });
+
+      startBtn.addEventListener('click', startBrickGame);
+      initBricks();
+      draw();
     })();
   </script>
 </body>

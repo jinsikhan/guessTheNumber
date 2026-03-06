@@ -326,25 +326,72 @@
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    var iconR = R * 0.5;
     if (isBomb) {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold ' + Math.round(R * 0.7) + 'px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('💣', x, y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(0, 0, iconR * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(iconR * 0.5, -iconR * 0.9);
+      ctx.lineTo(iconR * 0.9, -iconR * 1.1);
+      ctx.stroke();
+      ctx.fillStyle = '#ff6b35';
+      ctx.beginPath();
+      ctx.arc(iconR * 0.9, -iconR * 1.1, iconR * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     } else if (isMissile) {
-      ctx.font = 'bold ' + Math.round(R * 0.7) + 'px sans-serif';
-      ctx.fillText('🚀', x, y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#e74c3c';
+      ctx.beginPath();
+      ctx.moveTo(0, -iconR);
+      ctx.lineTo(iconR * 0.6, iconR * 0.8);
+      ctx.lineTo(0, iconR * 0.5);
+      ctx.lineTo(-iconR * 0.6, iconR * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#c0392b';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
     } else if (isCross) {
-      ctx.font = 'bold ' + Math.round(R * 0.7) + 'px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('✨', x, y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#f1c40f';
+      ctx.strokeStyle = '#d4ac0d';
+      ctx.lineWidth = 1;
+      for (var i = 0; i < 4; i++) {
+        var a = (Math.PI / 2) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a) * iconR, Math.sin(a) * iconR);
+        ctx.lineTo(Math.cos(a + Math.PI / 4) * iconR * 0.6, Math.sin(a + Math.PI / 4) * iconR * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
     } else if (isDiamond) {
-      ctx.font = 'bold ' + Math.round(R * 0.65) + 'px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('💎', x, y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#7dd3fc';
+      ctx.strokeStyle = '#0ea5e9';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, -iconR);
+      ctx.lineTo(iconR * 0.85, 0);
+      ctx.lineTo(0, iconR);
+      ctx.lineTo(-iconR * 0.85, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
   }
   function lightenColor(hex, amt) {
@@ -358,18 +405,32 @@
     return '#' + [r,g,b].map(function(x){ return ('0'+Math.round(x).toString(16)).slice(-2); }).join('');
   }
 
-  /** 그리드 고정 크기 (레벨과 관계없이 5x5) */
+  /** 레벨이 올라갈수록 블럭 개수 증가 (캔버스 400x600 안에 맞춰 R 스케일) */
   function getGridSize(lv) {
-    return { rows: 5, cols: 5 };
+    if (lv <= 1) return { rows: 5, cols: 5 };
+    if (lv === 2) return { rows: 6, cols: 5 };
+    if (lv === 3) return { rows: 6, cols: 6 };
+    if (lv === 4) return { rows: 7, cols: 6 };
+    if (lv === 5) return { rows: 7, cols: 7 };
+    if (lv === 6) return { rows: 8, cols: 7 };
+    return { rows: 8, cols: 8 };
   }
   function applyGridSize() {
+    var R_BASE = 28, GAP_BASE = 5;
     var sz = getGridSize(level);
     ROWS = sz.rows;
     COLS = sz.cols;
+    var stepX = Math.sqrt(3) * R_BASE + GAP_BASE;
+    var stepY = 1.5 * R_BASE + GAP_BASE;
+    var w = 2 * GAP_BASE + (Math.sqrt(3) * R_BASE) / 2 + (COLS - 1) * stepX + stepX * 0.5 + 2 * R_BASE;
+    var h = 2 * GAP_BASE + 2 * R_BASE + (ROWS - 1) * stepY;
+    var scale = Math.min(CANVAS_WIDTH / w, CANVAS_HEIGHT / h);
+    R = R_BASE * scale;
+    GAP = GAP_BASE * scale;
     STEP_X = Math.sqrt(3) * R + GAP;
     STEP_Y = 1.5 * R + GAP;
-    var w = 2 * GAP + (Math.sqrt(3) * R) / 2 + (COLS - 1) * STEP_X + STEP_X * 0.5 + 2 * R;
-    var h = 2 * GAP + 2 * R + (ROWS - 1) * STEP_Y;
+    w = 2 * GAP + (Math.sqrt(3) * R) / 2 + (COLS - 1) * STEP_X + STEP_X * 0.5 + 2 * R;
+    h = 2 * GAP + 2 * R + (ROWS - 1) * STEP_Y;
     gridOffsetX = (CANVAS_WIDTH - w) / 2;
     gridOffsetY = (CANVAS_HEIGHT - h) / 2;
     canvas.width = CANVAS_WIDTH;

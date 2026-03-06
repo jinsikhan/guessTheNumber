@@ -126,6 +126,7 @@
       width: 100%;
       height: auto;
       max-width: 100%;
+      aspect-ratio: 1 / 1.5;
       cursor: pointer;
       touch-action: manipulation;
     }
@@ -222,6 +223,8 @@
   var R = 28, GAP = 5, COLS = 5, ROWS = 5;
   var HEX_W = 2 * R, HEX_H = Math.sqrt(3) * R;
   var STEP_X, STEP_Y;
+  var CANVAS_WIDTH = 400, CANVAS_HEIGHT = 600;
+  var gridOffsetX = 0, gridOffsetY = 0;
   var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22'];
   var score = 0, level = 1, POINTS_PER_LEVEL = 450;
   var totalRemoved = 0, removedThisLevel = 0, diamondsRemovedThisLevel = 0, comboCount = 0;
@@ -277,13 +280,14 @@
   }
 
   function hexToPixel(r, c) {
-    var x = GAP + (Math.sqrt(3) * R) / 2 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
-    var y = GAP + R + r * STEP_Y;
+    var x = gridOffsetX + GAP + (Math.sqrt(3) * R) / 2 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
+    var y = gridOffsetY + GAP + R + r * STEP_Y;
     return { x: x, y: y };
   }
   function pixelToHex(px, py) {
-    var rApprox = Math.floor((py - GAP - R) / STEP_Y);
-    var cApprox = Math.floor((px - GAP - (Math.sqrt(3) * R) / 2 - (rApprox % 2) * (STEP_X * 0.5)) / STEP_X);
+    var px0 = px - gridOffsetX, py0 = py - gridOffsetY;
+    var rApprox = Math.floor((py0 - GAP - R) / STEP_Y);
+    var cApprox = Math.floor((px0 - GAP - (Math.sqrt(3) * R) / 2 - (rApprox % 2) * (STEP_X * 0.5)) / STEP_X);
     var best = null, bestD = 1e9;
     for (var dr = -1; dr <= 1; dr++) {
       for (var dc = -1; dc <= 1; dc++) {
@@ -354,15 +358,9 @@
     return '#' + [r,g,b].map(function(x){ return ('0'+Math.round(x).toString(16)).slice(-2); }).join('');
   }
 
-  /** 레벨이 올라갈수록 블럭 개수 증가 (1레벨=작은 그리드, 레벨업=큰 그리드) */
+  /** 그리드 고정 크기 (레벨과 관계없이 5x5) */
   function getGridSize(lv) {
-    if (lv <= 1) return { rows: 5, cols: 5 };
-    if (lv === 2) return { rows: 6, cols: 5 };
-    if (lv === 3) return { rows: 6, cols: 6 };
-    if (lv === 4) return { rows: 7, cols: 6 };
-    if (lv === 5) return { rows: 7, cols: 7 };
-    if (lv === 6) return { rows: 8, cols: 7 };
-    return { rows: 8, cols: 8 };
+    return { rows: 5, cols: 5 };
   }
   function applyGridSize() {
     var sz = getGridSize(level);
@@ -372,8 +370,10 @@
     STEP_Y = 1.5 * R + GAP;
     var w = 2 * GAP + (Math.sqrt(3) * R) / 2 + (COLS - 1) * STEP_X + STEP_X * 0.5 + 2 * R;
     var h = 2 * GAP + 2 * R + (ROWS - 1) * STEP_Y;
-    canvas.width = Math.round(Math.max(320, Math.min(580, w)));
-    canvas.height = Math.round(Math.max(300, Math.min(620, h)));
+    gridOffsetX = (CANVAS_WIDTH - w) / 2;
+    gridOffsetY = (CANVAS_HEIGHT - h) / 2;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
   }
   /** 레벨 올라갈수록 색상 추가 (시작은 4색으로 3개 붙기 줄임) */
   function getColorsForLevel(lv) {

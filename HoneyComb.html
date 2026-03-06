@@ -188,7 +188,7 @@
       <div class="stat"><span class="stat-icon">⭐</span> Lv.<span class="value" id="hexLevel">1</span></div>
       <div class="stat"><span class="stat-icon">💎</span> <span class="value" id="hexDiamonds">0/3</span></div>
       <div class="stat"><span class="stat-icon">🏆</span> <span class="value" id="hexScore">0</span></div>
-      <div class="stat timer" id="timerWrap"><span class="stat-icon">⏱</span> <span class="value" id="hexTimer">60</span>초</div>
+      <div class="stat timer" id="timerWrap"><span class="stat-icon">⏱</span> <span class="value" id="hexTimer">30</span>초</div>
     </div>
     <div class="progress-wrap">
       <div class="progress-bar" id="levelProgress" style="width: 0%;"></div>
@@ -254,7 +254,7 @@
   var swapAnim = null;
   var SWAP_ANIM_DURATION_MS = 220;
   var levelStartTime = 0;
-  var levelTimeLimitSec = 60;
+  var levelTimeLimitSec = 30;
   var gameOver = false;
   var gameOverUntil = 0;
   var timerIntervalId = null;
@@ -483,8 +483,9 @@
       }
     }
   }
-  /** 레벨당 제한 시간(초): 1=60, 2=65, 3=70 ... */
+  /** 레벨당 제한 시간(초): 1=30, 2=65, 3=70 ... */
   function getLevelTimeLimit(lv) {
+    if (lv <= 1) return 30;
     return 55 + Math.min(lv, 10) * 5;
   }
 
@@ -1263,15 +1264,9 @@
   draw();
 
   function restart() {
+    var currentLevel = level;
     gameOver = false;
     gameOverUntil = 0;
-    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
-    score = 0;
-    level = 1;
-    totalRemoved = 0;
-    removedThisLevel = 0;
-    diamondsRemovedThisLevel = 0;
-    comboCount = 0;
     if (timerIntervalId) clearInterval(timerIntervalId);
     timerIntervalId = null;
     resetInputState();
@@ -1285,41 +1280,45 @@
     chainInProgress = false;
     if (chainStepTimerId) clearTimeout(chainStepTimerId);
     chainStepTimerId = null;
-    if (scoreEl) scoreEl.textContent = '0';
-    if (levelEl) levelEl.textContent = '1';
-    if (timerEl) timerEl.textContent = getLevelTimeLimit(1);
+    removedThisLevel = 0;
+    diamondsRemovedThisLevel = 0;
+    comboCount = 0;
+    if (scoreEl) scoreEl.textContent = score;
+    if (levelEl) levelEl.textContent = currentLevel;
+    if (timerEl) timerEl.textContent = getLevelTimeLimit(currentLevel);
     if (timerWrap) timerWrap.classList.remove('warning', 'danger');
     applyGridSize();
     initGrid();
     updateProgressBar();
     startLevelTimer();
+    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
     draw();
   }
 
   if (gameOverRestartBtn) {
     function doRestart(e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
-      restart();
+      setTimeout(function() { restart(); }, 10);
     }
     gameOverRestartBtn.addEventListener('click', doRestart);
     gameOverRestartBtn.addEventListener('pointerdown', doRestart);
     gameOverRestartBtn.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      restart();
+      setTimeout(function() { restart(); }, 10);
     }, { passive: false });
   }
   if (gameOverOverlay) {
     function onRestartTap(e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
-      restart();
+      setTimeout(function() { restart(); }, 10);
     }
     gameOverOverlay.addEventListener('click', onRestartTap);
     gameOverOverlay.addEventListener('pointerdown', onRestartTap);
     gameOverOverlay.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      restart();
+      setTimeout(function() { restart(); }, 10);
     }, { passive: false });
   }
   }

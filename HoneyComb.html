@@ -126,7 +126,7 @@
       width: 100%;
       height: auto;
       max-width: 100%;
-      aspect-ratio: 1 / 1.5;
+      aspect-ratio: 1 / 1.4;
       cursor: pointer;
       touch-action: manipulation;
     }
@@ -150,22 +150,25 @@
       .stat { padding: 0.35rem 0.5rem; font-size: 0.8rem; }
     }
     .game-over-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
-      z-index: 20;
+      z-index: 9999;
       display: flex;
       align-items: center;
       justify-content: center;
+      background: rgba(0, 0, 0, 0.88);
       touch-action: manipulation;
-      background: transparent;
-      cursor: pointer;
       pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .game-over-overlay[hidden] {
+      display: none !important;
     }
     .game-over-restart-btn {
       position: relative;
-      z-index: 21;
-      padding: 16px 40px;
-      font-size: 1.25rem;
+      z-index: 10000;
+      padding: 18px 48px;
+      font-size: 1.3rem;
       font-weight: 700;
       font-family: 'Noto Sans KR', sans-serif;
       color: #1a1a1a;
@@ -199,11 +202,11 @@
       <div class="progress-bar" id="levelProgress" style="width: 0%;"></div>
     </div>
     <div class="hex-canvas-wrap">
-      <canvas id="hexCanvas" width="420" height="380"></canvas>
+      <canvas id="hexCanvas" width="400" height="560"></canvas>
     </div>
     <p class="mode-hint">클릭→클릭: 인접 블록 맞바꾸기 (3개 이상 맞으면 제거) · 드래그로 같은 색 연속 제거</p>
     <p class="combo-hint">리필 후 또 맞으면 <strong>연쇄</strong> → 더블·트리플·익사이팅</p>
-    <div id="gameOverOverlay" class="game-over-overlay" style="display:none;" aria-label="게임 오버">
+    <div id="gameOverOverlay" class="game-over-overlay" hidden aria-label="게임 오버">
       <button type="button" id="gameOverRestartBtn" class="game-over-restart-btn">다시 하기</button>
     </div>
   </div>
@@ -227,7 +230,9 @@
   var R = 28, GAP = 5, COLS = 5, ROWS = 5;
   var HEX_W = 2 * R, HEX_H = Math.sqrt(3) * R;
   var STEP_X, STEP_Y;
-  var CANVAS_WIDTH = 400, CANVAS_HEIGHT = 600;
+  var CANVAS_WIDTH = 400;
+  var ASPECT_RATIO = 1.4;
+  var CANVAS_HEIGHT = Math.round(CANVAS_WIDTH * ASPECT_RATIO);
   var gridOffsetX = 0, gridOffsetY = 0;
   var gridScale = 1;
   var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22'];
@@ -247,14 +252,14 @@
   var hexAnim = null;
   var hexAnimIntervalId = null;
   var refillAnim = null;
-  var REFILL_ANIM_MS = 720;
+  var REFILL_ANIM_MS = 880;
   var removeAnim = null;
-  var REMOVE_ANIM_MS = 280;
+  var REMOVE_ANIM_MS = 420;
   var BOMB_ANIM_MS = 520, MISSILE_ANIM_MS = 400, CROSS_ANIM_MS = 450;
   var MATCH_DELAY_MS = 500;
   var matchDelayUntil = 0;
   var matchDelayTimerId = null;
-  var CHAIN_STEP_DELAY_MS = 1100;
+  var CHAIN_PAUSE_AFTER_REFILL_MS = 280;
   var MAX_CHAIN_COMBO = 4;
   var chainInProgress = false;
   var chainStepTimerId = null;
@@ -264,8 +269,108 @@
   var comboShowUntil = 0, comboText = '';
   var badgeUntil = 0, badgeText = '';
   var badgeParticles = [];
+  var burstParticles = [];
+  var BURST_PARTICLE_LIFE_MS = 480;
   var matchFlashUntil = 0;
   var levelUpUntil = 0;
+  var levelUpStartTime = 0;
+  var LEVEL_UP_DURATION_MS = 1800;
+
+  var audioCtx = null;
+  var audioReady = false;
+  function initAudio() {
+    if (audioReady || audioCtx) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioReady = true;
+      startBGM();
+    } catch (e) {}
+  }
+  var bgmGainNode = null;
+  var bgmOsc = null;
+  var bgmInterval = null;
+  function startBGM() {
+    if (!audioCtx || !audioReady) return;
+    try {
+      if (bgmInterval) clearInterval(bgmInterval);
+      bgmGainNode = audioCtx.createGain();
+      bgmGainNode.gain.value = 0.06;
+      bgmGainNode.connect(audioCtx.destination);
+      var playChord = function() {
+        if (!audioCtx || !bgmGainNode) return;
+        var osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 262;
+        osc.connect(bgmGainNode);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.12);
+        var o2 = audioCtx.createOscillator();
+        o2.type = 'sine';
+        o2.frequency.value = 330;
+        o2.connect(bgmGainNode);
+        o2.start(audioCtx.currentTime);
+        o2.stop(audioCtx.currentTime + 0.12);
+      };
+      playChord();
+      bgmInterval = setInterval(playChord, 3200);
+    } catch (e) {}
+  }
+  function stopBGM() {
+    if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
+    bgmOsc = null;
+  }
+  function playMatch() {
+    if (!audioCtx || !audioReady) return;
+    try {
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      osc.frequency.setValueAtTime(523, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.12);
+      osc.type = 'sine';
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {}
+  }
+  function playExplosion() {
+    if (!audioCtx || !audioReady) return;
+    try {
+      var bufferSize = audioCtx.sampleRate * 0.2;
+      var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      var data = buffer.getChannelData(0);
+      for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+      var src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+      var g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      src.connect(g);
+      g.connect(audioCtx.destination);
+      src.start(audioCtx.currentTime);
+    } catch (e) {}
+  }
+  function playLevelUp() {
+    if (!audioCtx || !audioReady) return;
+    try {
+      var freqs = [523, 659, 784, 1047];
+      freqs.forEach(function(f, i) {
+        var osc = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        g.gain.setValueAtTime(0, audioCtx.currentTime);
+        g.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + i * 0.08 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.08 + 0.2);
+        osc.frequency.value = f;
+        osc.type = 'sine';
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + i * 0.08);
+        osc.stop(audioCtx.currentTime + i * 0.08 + 0.25);
+      });
+    } catch (e) {}
+  }
   var swapAnim = null;
   var SWAP_ANIM_DURATION_MS = 220;
   var levelStartTime = 0;
@@ -275,6 +380,57 @@
   var timerIntervalId = null;
   var lastKnownTimeLeft = 999;
 
+  function spawnBurstParticles(cellList) {
+    var now = Date.now();
+    for (var i = 0; i < cellList.length; i++) {
+      var rc = cellList[i];
+      var cell = get(rc.r, rc.c);
+      if (!cell) continue;
+      var p = hexToPixel(rc.r, rc.c);
+      var sx = gridOffsetX + p.x * gridScale;
+      var sy = gridOffsetY + p.y * gridScale;
+      var n = 10 + Math.floor(Math.random() * 6);
+      var color = cell.color;
+      for (var j = 0; j < n; j++) {
+        var a = (Math.PI * 2 * j) / n + Math.random() * 0.8;
+        var speed = 2.5 + Math.random() * 4;
+        burstParticles.push({
+          x: sx, y: sy,
+          vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - 1,
+          start: now, life: BURST_PARTICLE_LIFE_MS,
+          color: color, size: 3 + Math.random() * 4
+        });
+      }
+    }
+  }
+  function updateBurstParticles(now) {
+    for (var i = burstParticles.length - 1; i >= 0; i--) {
+      var pt = burstParticles[i];
+      var age = now - pt.start;
+      if (age >= pt.life) { burstParticles.splice(i, 1); continue; }
+      pt.x += pt.vx; pt.y += pt.vy;
+      pt.vy += 0.12;
+    }
+  }
+  function drawBurstParticles(ctx, now) {
+    for (var i = 0; i < burstParticles.length; i++) {
+      var pt = burstParticles[i];
+      var age = now - pt.start;
+      var t = age / pt.life;
+      var alpha = 1 - t * t;
+      if (alpha <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = pt.color;
+      ctx.shadowColor = pt.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }
   function id(r, c) { return r * COLS + c; }
   function neighbors(r, c) {
     var dcEven = [-1, 0, -1, 1, -1, 0], dcOdd = [0, 1, -1, 1, 0, 1], dr = [-1, -1, 0, 0, 1, 1];
@@ -580,7 +736,10 @@
         gameOverUntil = Date.now();
         resetInputState();
         draw();
-        if (gameOverOverlay) gameOverOverlay.style.display = 'flex';
+        if (gameOverOverlay) {
+          gameOverOverlay.removeAttribute('hidden');
+          if (gameOverRestartBtn) gameOverRestartBtn.focus();
+        }
       }
     }, 200);
   }
@@ -805,6 +964,7 @@
       start: Date.now(),
       duration: REMOVE_ANIM_MS
     };
+    spawnBurstParticles(unique);
 
     diamondsRemovedThisLevel += diamondsInGroup;
     if (comboCount === 1) removedThisLevel += unique.length;
@@ -812,16 +972,18 @@
     var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
     score += baseScore + comboBonus;
     scorePopups.push({ score: baseScore + comboBonus, x: canvas.width / 2, y: canvas.height / 2, start: Date.now() });
+    playMatch();
     comboText = getComboLabel(comboCount);
     if (comboCount >= 2) itemsUnlocked = true;
     comboShowUntil = Date.now() + 1200;
-    if (comboCount === 2) { badgeText = 'DOUBLE!'; badgeUntil = Date.now() + 900; badgeParticles = []; }
-    else if (comboCount === 3) { badgeText = 'TRIPLE!'; badgeUntil = Date.now() + 900; badgeParticles = []; }
-    else if (comboCount >= 4) { badgeText = 'AMAZING!'; badgeUntil = Date.now() + 900; badgeParticles = []; }
+    if (comboCount === 2) { badgeText = 'x2!'; badgeUntil = Date.now() + 1200; badgeParticles = []; }
+    else if (comboCount === 3) { badgeText = 'x3!'; badgeUntil = Date.now() + 1200; badgeParticles = []; }
+    else if (comboCount >= 4) { badgeText = 'AMAZING!'; badgeUntil = Date.now() + 1200; badgeParticles = []; }
     if (badgeText && badgeParticles.length === 0) {
-      for (var pi = 0; pi < 12; pi++) {
-        var a = (Math.PI * 2 * pi) / 12 + Math.random() * 0.5;
-        badgeParticles.push({ x: canvas.width / 2, y: canvas.height / 2, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2, start: Date.now() });
+      for (var pi = 0; pi < 20; pi++) {
+        var a = (Math.PI * 2 * pi) / 20 + Math.random() * 0.5;
+        var sp = 3 + Math.random() * 4;
+        badgeParticles.push({ x: canvas.width / 2, y: canvas.height / 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, start: Date.now() });
       }
     }
     matchFlashUntil = Date.now() + 100;
@@ -847,10 +1009,11 @@
 
       if (nextGroup && nextGroup.length >= 3) {
         var nextCopy = nextGroup.map(function(p) { return { r: p.r, c: p.c }; });
+        var delay = REFILL_ANIM_MS + CHAIN_PAUSE_AFTER_REFILL_MS;
         chainStepTimerId = setTimeout(function() {
           chainStepTimerId = null;
           applyRemove(nextCopy, fromSwap);
-        }, CHAIN_STEP_DELAY_MS);
+        }, delay);
         chainDrawLoop();
         return;
       }
@@ -875,8 +1038,10 @@
         updateProgressBar();
         comboCount = 0;
         resetInputState();
-        levelUpUntil = Date.now() + 1500;
+        levelUpUntil = Date.now() + LEVEL_UP_DURATION_MS;
+        levelUpStartTime = Date.now();
         levelUpDrawLoop();
+        playLevelUp();
         return;
       }
       resetInputState();
@@ -1057,8 +1222,8 @@
         } else if (refillSet && refillSet[r + ',' + c]) {
           var t = Math.min(1, (now - refillAnim.start) / refillAnim.duration);
           var ease = 1 - Math.pow(1 - t, 3);
-          var dropOffset = (1 - ease) * -100;
-          var scale = 0.3 + 0.7 * ease;
+          var dropOffset = (1 - ease) * -140;
+          var scale = 0.35 + 0.65 * ease;
           ctx.save();
           ctx.translate(p.x, p.y + dropOffset);
           ctx.scale(scale, scale);
@@ -1080,6 +1245,8 @@
       drawHex(x2, y2, sa.cellB.color, sa.cellB.bomb, sa.cellB.missile, sa.cellB.cross, sa.cellB.diamond, false);
     }
     ctx.restore();
+    updateBurstParticles(now);
+    drawBurstParticles(ctx, now);
     if (now < matchFlashUntil) {
       ctx.save();
       var flashAlpha = 1 - (now - (matchFlashUntil - 100)) / 100;
@@ -1108,35 +1275,42 @@
     }
     if (now < badgeUntil && badgeText) {
       ctx.save();
-      var badgeAge = now - (badgeUntil - 900);
-      var badgeScale = 1 + 0.15 * Math.sin(now / 80);
-      var badgeAlpha = badgeAge < 100 ? badgeAge / 100 : (badgeAge > 700 ? (900 - badgeAge) / 200 : 1);
+      var badgeAge = now - (badgeUntil - 1200);
+      var bounce = badgeAge < 200 ? (badgeAge / 200) * 1.35 : (badgeAge < 350 ? 1.35 - (badgeAge - 200) / 150 * 0.2 : 1.15 + 0.05 * Math.sin((now - (badgeUntil - 1200 + 350)) / 100));
+      var badgeScale = Math.min(1.2, bounce);
+      var badgeAlpha = badgeAge < 80 ? badgeAge / 80 : (badgeAge > 1000 ? (1200 - badgeAge) / 200 : 1);
       ctx.globalAlpha = badgeAlpha;
-      ctx.translate(canvas.width / 2, canvas.height / 2 - 20);
+      ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.scale(badgeScale, badgeScale);
-      ctx.translate(-canvas.width / 2, -(canvas.height / 2 - 20));
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      ctx.shadowColor = 'rgba(255,200,80,0.9)';
+      ctx.shadowBlur = 25;
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 4;
-      ctx.font = 'bold 36px sans-serif';
+      ctx.lineWidth = 6;
+      ctx.font = 'bold 56px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.strokeText(badgeText, canvas.width / 2, canvas.height / 2 - 20);
-      ctx.fillText(badgeText, canvas.width / 2, canvas.height / 2 - 20);
+      ctx.strokeText(badgeText, canvas.width / 2, canvas.height / 2);
+      ctx.fillText(badgeText, canvas.width / 2, canvas.height / 2);
+      ctx.shadowBlur = 0;
       ctx.restore();
       for (var pi = badgeParticles.length - 1; pi >= 0; pi--) {
         var pt = badgeParticles[pi];
         var page = now - pt.start;
-        if (page > 400) { badgeParticles.splice(pi, 1); continue; }
+        if (page > 500) { badgeParticles.splice(pi, 1); continue; }
         var px = pt.x + pt.vx * page;
         var py = pt.y + pt.vy * page;
-        var pa = 1 - page / 400;
+        var pa = 1 - page / 500;
         ctx.save();
         ctx.globalAlpha = pa;
         ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#f59e0b';
+        ctx.shadowBlur = 4;
         ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
         ctx.restore();
       }
     }
@@ -1166,14 +1340,58 @@
       ctx.restore();
     }
     if (now < levelUpUntil) {
+      var levelUpElapsed = now - levelUpStartTime;
+      var levelUpT = Math.min(1, levelUpElapsed / LEVEL_UP_DURATION_MS);
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(0,0,0,0.5 + 0.2 * (1 - levelUpT))';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#f1c40f';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('⭐ 레벨 ' + level + ' ⭐', canvas.width / 2, canvas.height / 2);
+      var cx = canvas.width / 2, cy = canvas.height / 2;
+      var hexRadius = 18;
+      for (var ring = 0; ring < 3; ring++) {
+        var expandT = Math.min(1, (levelUpElapsed - ring * 120) / 400);
+        if (expandT <= 0) continue;
+        var ease = 1 - Math.pow(1 - expandT, 2);
+        var r = 40 + ring * 38 + ease * 90;
+        var alpha = (1 - levelUpT * 0.7) * (1 - ring * 0.25);
+        var count = 6 + ring * 2;
+        for (var i = 0; i < count; i++) {
+          var a = (Math.PI * 2 * i) / count + levelUpElapsed * 0.002;
+          var hx = cx + r * Math.cos(a);
+          var hy = cy + r * Math.sin(a);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(hx, hy);
+          ctx.rotate(a);
+          ctx.fillStyle = ring === 0 ? 'rgba(255,200,80,0.95)' : (ring === 1 ? 'rgba(245,180,60,0.85)' : 'rgba(230,160,40,0.6)');
+          ctx.strokeStyle = 'rgba(255,230,150,0.9)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (var v = 0; v < 6; v++) {
+            var va = Math.PI / 2 + (Math.PI / 3) * v;
+            var vx = hexRadius * Math.cos(va), vy = hexRadius * Math.sin(va);
+            if (v === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      var textT = Math.min(1, (levelUpElapsed - 300) / 400);
+      var textAlpha = textT < 0 ? 0 : (levelUpElapsed > 1200 ? (LEVEL_UP_DURATION_MS - levelUpElapsed) / 600 : 1);
+      if (textAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = textAlpha;
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 5;
+        ctx.font = 'bold 36px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeText('⭐ 레벨 ' + level + ' ⭐', cx, cy);
+        ctx.fillText('⭐ 레벨 ' + level + ' ⭐', cx, cy);
+        ctx.restore();
+      }
       ctx.restore();
     }
     if (gameOver) {
@@ -1296,6 +1514,7 @@
   }
 
   function startHexAnim() {
+    playExplosion();
     if (hexAnimIntervalId != null) clearInterval(hexAnimIntervalId);
     hexAnimIntervalId = setInterval(animateHex, 50);
     animateHex();
@@ -1440,6 +1659,7 @@
   }
 
   canvas.addEventListener('mousedown', function(e) {
+    initAudio();
     var co = getCoords(e, false);
     onPointerDown(co.px, co.py);
   });
@@ -1454,6 +1674,7 @@
   canvas.addEventListener('mouseleave', function() { onPointerUp(null, null); });
   canvas.addEventListener('touchstart', function(e) {
     e.preventDefault();
+    initAudio();
     var co = getCoords(e, true);
     onPointerDown(co.px, co.py);
   }, { passive: false });
@@ -1483,7 +1704,7 @@
   function restart() {
     gameOver = false;
     gameOverUntil = 0;
-    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
+    if (gameOverOverlay) gameOverOverlay.setAttribute('hidden', '');
     if (timerIntervalId) clearInterval(timerIntervalId);
     timerIntervalId = null;
     lastKnownTimeLeft = 999;
@@ -1493,6 +1714,7 @@
     hexAnim = null;
     refillAnim = null;
     removeAnim = null;
+    burstParticles = [];
     if (hexAnimIntervalId != null) clearInterval(hexAnimIntervalId);
     hexAnimIntervalId = null;
     matchDelayUntil = 0;
@@ -1521,26 +1743,26 @@
       if (e) { e.preventDefault(); e.stopPropagation(); }
       restart();
     }
-    gameOverRestartBtn.addEventListener('click', doRestart);
-    gameOverRestartBtn.addEventListener('pointerdown', doRestart);
+    gameOverRestartBtn.addEventListener('click', doRestart, true);
+    gameOverRestartBtn.addEventListener('pointerdown', doRestart, true);
     gameOverRestartBtn.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
       restart();
-    }, { passive: false });
+    }, { passive: false, capture: true });
   }
   if (gameOverOverlay) {
     function onRestartTap(e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
       restart();
     }
-    gameOverOverlay.addEventListener('click', onRestartTap);
-    gameOverOverlay.addEventListener('pointerdown', onRestartTap);
+    gameOverOverlay.addEventListener('click', onRestartTap, true);
+    gameOverOverlay.addEventListener('pointerdown', onRestartTap, true);
     gameOverOverlay.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
       restart();
-    }, { passive: false });
+    }, { passive: false, capture: true });
   }
   }
 

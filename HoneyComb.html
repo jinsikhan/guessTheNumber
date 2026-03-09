@@ -1520,14 +1520,18 @@
     return false;
   }
 
-  function getCoords(e, touch) {
+  function clientToGridCoords(clientX, clientY) {
     var rect = canvas.getBoundingClientRect();
     var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
-    var clientX = touch ? e.touches[0].clientX : e.clientX;
-    var clientY = touch ? e.touches[0].clientY : e.clientY;
     var canvasPx = (clientX - rect.left) * scaleX;
     var canvasPy = (clientY - rect.top) * scaleY;
     return { px: (canvasPx - gridOffsetX) / gridScale, py: (canvasPy - gridOffsetY) / gridScale };
+  }
+
+  function getCoords(e, touch) {
+    var clientX = touch ? e.touches[0].clientX : e.clientX;
+    var clientY = touch ? e.touches[0].clientY : e.clientY;
+    return clientToGridCoords(clientX, clientY);
   }
 
   function onPointerDown(px, py) {
@@ -1675,12 +1679,11 @@
   }, { passive: false });
   canvas.addEventListener('touchend', function(e) {
     e.preventDefault();
-    var rect = canvas.getBoundingClientRect();
-    var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
     var px = null, py = null;
     if (e.changedTouches && e.changedTouches[0]) {
-      px = (e.changedTouches[0].clientX - rect.left) * scaleX;
-      py = (e.changedTouches[0].clientY - rect.top) * scaleY;
+      var co = clientToGridCoords(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      px = co.px;
+      py = co.py;
     }
     onPointerUp(px, py);
   }, { passive: false });

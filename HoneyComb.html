@@ -158,8 +158,12 @@
       justify-content: center;
       touch-action: manipulation;
       background: transparent;
+      cursor: pointer;
+      pointer-events: auto;
     }
     .game-over-restart-btn {
+      position: relative;
+      z-index: 21;
       padding: 16px 40px;
       font-size: 1.25rem;
       font-weight: 700;
@@ -225,11 +229,13 @@
   var STEP_X, STEP_Y;
   var CANVAS_WIDTH = 400, CANVAS_HEIGHT = 600;
   var gridOffsetX = 0, gridOffsetY = 0;
+  var gridScale = 1;
   var HEX_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22'];
   var score = 0, level = 1, POINTS_PER_LEVEL = 450;
   var totalRemoved = 0, removedThisLevel = 0, diamondsRemovedThisLevel = 0, comboCount = 0;
   var grid = [];
   var BOMB_CHANCE = 0.06, MISSILE_CHANCE = 0.04, CROSS_CHANCE = 0.04;
+  var itemsUnlocked = false;
   function getItemThreshold() { return 3 + level * 2; }
 
   var selected = [];
@@ -241,7 +247,9 @@
   var hexAnim = null;
   var hexAnimIntervalId = null;
   var refillAnim = null;
-  var REFILL_ANIM_MS = 450;
+  var REFILL_ANIM_MS = 720;
+  var removeAnim = null;
+  var REMOVE_ANIM_MS = 280;
   var BOMB_ANIM_MS = 520, MISSILE_ANIM_MS = 400, CROSS_ANIM_MS = 450;
   var MATCH_DELAY_MS = 500;
   var matchDelayUntil = 0;
@@ -285,14 +293,13 @@
   }
 
   function hexToPixel(r, c) {
-    var x = gridOffsetX + GAP + (Math.sqrt(3) * R) / 2 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
-    var y = gridOffsetY + GAP + R + r * STEP_Y;
+    var x = GAP + (Math.sqrt(3) * R) / 2 + c * STEP_X + (r % 2) * (STEP_X * 0.5);
+    var y = GAP + R + r * STEP_Y;
     return { x: x, y: y };
   }
   function pixelToHex(px, py) {
-    var px0 = px - gridOffsetX, py0 = py - gridOffsetY;
-    var rApprox = Math.floor((py0 - GAP - R) / STEP_Y);
-    var cApprox = Math.floor((px0 - GAP - (Math.sqrt(3) * R) / 2 - (rApprox % 2) * (STEP_X * 0.5)) / STEP_X);
+    var rApprox = Math.floor((py - GAP - R) / STEP_Y);
+    var cApprox = Math.floor((px - GAP - (Math.sqrt(3) * R) / 2 - (rApprox % 2) * (STEP_X * 0.5)) / STEP_X);
     var best = null, bestD = 1e9;
     for (var dr = -1; dr <= 1; dr++) {
       for (var dc = -1; dc <= 1; dc++) {
@@ -425,19 +432,15 @@
     var sz = getGridSize(level);
     ROWS = sz.rows;
     COLS = sz.cols;
-    var stepX = Math.sqrt(3) * R_BASE + GAP_BASE;
-    var stepY = 1.5 * R_BASE + GAP_BASE;
-    var w = 2 * GAP_BASE + (Math.sqrt(3) * R_BASE) / 2 + (COLS - 1) * stepX + stepX * 0.5 + 2 * R_BASE;
-    var h = 2 * GAP_BASE + 2 * R_BASE + (ROWS - 1) * stepY;
-    var scale = Math.min(CANVAS_WIDTH / w, CANVAS_HEIGHT / h);
-    R = R_BASE * scale;
-    GAP = GAP_BASE * scale;
+    R = R_BASE;
+    GAP = GAP_BASE;
     STEP_X = Math.sqrt(3) * R + GAP;
     STEP_Y = 1.5 * R + GAP;
-    w = 2 * GAP + (Math.sqrt(3) * R) / 2 + (COLS - 1) * STEP_X + STEP_X * 0.5 + 2 * R;
-    h = 2 * GAP + 2 * R + (ROWS - 1) * STEP_Y;
-    gridOffsetX = (CANVAS_WIDTH - w) / 2;
-    gridOffsetY = (CANVAS_HEIGHT - h) / 2;
+    var w = 2 * GAP + (Math.sqrt(3) * R) / 2 + (COLS - 1) * STEP_X + STEP_X * 0.5 + 2 * R;
+    var h = 2 * GAP + 2 * R + (ROWS - 1) * STEP_Y;
+    gridScale = Math.min(CANVAS_WIDTH / w, CANVAS_HEIGHT / h);
+    gridOffsetX = (CANVAS_WIDTH - w * gridScale) / 2;
+    gridOffsetY = (CANVAS_HEIGHT - h * gridScale) / 2;
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
   }
@@ -479,7 +482,7 @@
 
   function randCell(r, c, allowDiamond) {
     var colors = getColorsForLevel(level);
-    var allowItem = totalRemoved >= getItemThreshold();
+    var allowItem = itemsUnlocked && totalRemoved >= getItemThreshold();
     var itemMult = 1 / (1 + (level - 1) * 0.28);
     var isBomb = allowItem && Math.random() < BOMB_CHANCE * itemMult;
     var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE * itemMult;
@@ -621,7 +624,7 @@
     }
     var pool = safe.length > 0 ? safe : colors;
     var color = pool[Math.floor(Math.random() * pool.length)];
-    var allowItem = totalRemoved >= getItemThreshold();
+    var allowItem = itemsUnlocked && totalRemoved >= getItemThreshold();
     var itemMult = 1 / (1 + (level - 1) * 0.28);
     var isBomb = allowItem && Math.random() < BOMB_CHANCE * itemMult;
     var isMissile = allowItem && !isBomb && Math.random() < MISSILE_CHANCE * itemMult;
@@ -679,6 +682,28 @@
           var ncell = get(nn.r, nn.c);
           var nkey = nn.r + ',' + nn.c;
           if (ncell && ncell.bomb && !processed[nkey]) queue.push({ r: nn.r, c: nn.c });
+        }
+      }
+    }
+    var seen = {};
+    for (var i = 0; i < toRemove.length; i++) { var t = toRemove[i]; seen[t.r + ',' + t.c] = true; }
+    for (var i = 0; i < toRemove.length; i++) {
+      var t = toRemove[i];
+      var cell = get(t.r, t.c);
+      if (cell && cell.missile) {
+        for (var cc = 0; cc < COLS; cc++) {
+          var k = t.r + ',' + cc;
+          if (!seen[k]) { seen[k] = true; toRemove.push({ r: t.r, c: cc }); }
+        }
+      }
+      if (cell && cell.cross) {
+        for (var cc = 0; cc < COLS; cc++) {
+          var k = t.r + ',' + cc;
+          if (!seen[k]) { seen[k] = true; toRemove.push({ r: t.r, c: cc }); }
+        }
+        for (var rr = 0; rr < ROWS; rr++) {
+          var k = rr + ',' + t.c;
+          if (!seen[k]) { seen[k] = true; toRemove.push({ r: rr, c: t.c }); }
         }
       }
     }
@@ -774,8 +799,13 @@
       var cell = get(unique[i].r, unique[i].c);
       if (cell && cell.diamond) diamondsInGroup++;
     }
-    refillOnlyRemoved(unique);
-    refillAnim = { cells: unique.map(function(t) { return { r: t.r, c: t.c }; }), start: Date.now(), duration: REFILL_ANIM_MS };
+
+    removeAnim = {
+      cells: unique.map(function(t) { return { r: t.r, c: t.c }; }),
+      start: Date.now(),
+      duration: REMOVE_ANIM_MS
+    };
+
     diamondsRemovedThisLevel += diamondsInGroup;
     if (comboCount === 1) removedThisLevel += unique.length;
     var baseScore = unique.length * 10;
@@ -783,6 +813,7 @@
     score += baseScore + comboBonus;
     scorePopups.push({ score: baseScore + comboBonus, x: canvas.width / 2, y: canvas.height / 2, start: Date.now() });
     comboText = getComboLabel(comboCount);
+    if (comboCount >= 2) itemsUnlocked = true;
     comboShowUntil = Date.now() + 1200;
     if (comboCount === 2) { badgeText = 'DOUBLE!'; badgeUntil = Date.now() + 900; badgeParticles = []; }
     else if (comboCount === 3) { badgeText = 'TRIPLE!'; badgeUntil = Date.now() + 900; badgeParticles = []; }
@@ -804,46 +835,53 @@
     comboCount++;
 
     draw();
+    removeDrawLoop();
+    setTimeout(function() {
+      refillOnlyRemoved(unique);
+      refillAnim = { cells: unique.map(function(t) { return { r: t.r, c: t.c }; }), start: Date.now(), duration: REFILL_ANIM_MS };
+      removeAnim = null;
+      draw();
 
-    var group = findAnyMatch();
-    var nextGroup = (group && group.length >= 3 && comboCount < MAX_CHAIN_COMBO) ? group : null;
+      var group = findAnyMatch();
+      var nextGroup = (group && group.length >= 3 && comboCount < MAX_CHAIN_COMBO) ? group : null;
 
-    if (nextGroup && nextGroup.length >= 3) {
-      var nextCopy = nextGroup.map(function(p) { return { r: p.r, c: p.c }; });
-      chainStepTimerId = setTimeout(function() {
-        chainStepTimerId = null;
-        applyRemove(nextCopy, fromSwap);
-      }, CHAIN_STEP_DELAY_MS);
-      chainDrawLoop();
-      return;
-    }
+      if (nextGroup && nextGroup.length >= 3) {
+        var nextCopy = nextGroup.map(function(p) { return { r: p.r, c: p.c }; });
+        chainStepTimerId = setTimeout(function() {
+          chainStepTimerId = null;
+          applyRemove(nextCopy, fromSwap);
+        }, CHAIN_STEP_DELAY_MS);
+        chainDrawLoop();
+        return;
+      }
 
-    chainInProgress = false;
-    if (chainStepTimerId != null) clearTimeout(chainStepTimerId);
-    chainStepTimerId = null;
+      chainInProgress = false;
+      if (chainStepTimerId != null) clearTimeout(chainStepTimerId);
+      chainStepTimerId = null;
 
-    if (scoreEl) scoreEl.textContent = score;
-    var needToNext = getDiamondsToNextLevel(level);
-    updateProgressBar();
-
-    if (diamondsRemovedThisLevel >= needToNext) {
-      level++;
-      removedThisLevel = 0;
-      diamondsRemovedThisLevel = 0;
-      if (timerIntervalId) clearInterval(timerIntervalId);
-      timerIntervalId = null;
-      applyGridSize();
-      initGrid();
-      if (levelEl) levelEl.textContent = level;
+      if (scoreEl) scoreEl.textContent = score;
+      var needToNext = getDiamondsToNextLevel(level);
       updateProgressBar();
-      comboCount = 0;
+
+      if (diamondsRemovedThisLevel >= needToNext) {
+        level++;
+        removedThisLevel = 0;
+        diamondsRemovedThisLevel = 0;
+        if (timerIntervalId) clearInterval(timerIntervalId);
+        timerIntervalId = null;
+        applyGridSize();
+        initGrid();
+        if (levelEl) levelEl.textContent = level;
+        updateProgressBar();
+        comboCount = 0;
+        resetInputState();
+        levelUpUntil = Date.now() + 1500;
+        levelUpDrawLoop();
+        return;
+      }
       resetInputState();
-      levelUpUntil = Date.now() + 1500;
-      levelUpDrawLoop();
-      return;
-    }
-    resetInputState();
-    comboDrawLoop();
+      comboDrawLoop();
+    }, REMOVE_ANIM_MS);
   }
 
   function comboDrawLoop() {
@@ -851,6 +889,12 @@
     var now = Date.now();
     if (now < comboShowUntil || now < matchFlashUntil || now < bigTextUntil || now < badgeUntil || scorePopups.length > 0) {
       requestAnimationFrame(comboDrawLoop);
+    }
+  }
+  function removeDrawLoop() {
+    draw();
+    if (removeAnim && (Date.now() - removeAnim.start) < removeAnim.duration) {
+      requestAnimationFrame(removeDrawLoop);
     }
   }
 
@@ -968,6 +1012,9 @@
       }
     }
     ctx.restore();
+    ctx.save();
+    ctx.translate(gridOffsetX, gridOffsetY);
+    ctx.scale(gridScale, gridScale);
     var sa = swapAnim;
     var now = Date.now();
     if (refillAnim && (now - refillAnim.start) >= refillAnim.duration) refillAnim = null;
@@ -979,6 +1026,14 @@
         refillSet[rc.r + ',' + rc.c] = true;
       }
     }
+    var removeSet = null;
+    if (removeAnim) {
+      removeSet = {};
+      for (var i = 0; i < removeAnim.cells.length; i++) {
+        var rc = removeAnim.cells[i];
+        removeSet[rc.r + ',' + rc.c] = true;
+      }
+    }
     for (var r = 0; r < ROWS; r++) {
       for (var c = 0; c < COLS; c++) {
         if (sa && ((r === sa.r1 && c === sa.c1) || (r === sa.r2 && c === sa.c2))) continue;
@@ -987,11 +1042,23 @@
         var p = hexToPixel(r, c);
         var isSel = selected.some(function(s) { return s.r === r && s.c === c; });
         var isSwap = swapFirst && swapFirst.r === r && swapFirst.c === c;
-        if (refillSet && refillSet[r + ',' + c]) {
+        if (removeSet && removeSet[r + ',' + c]) {
+          var tr = Math.min(1, (now - removeAnim.start) / removeAnim.duration);
+          var easeOut = 1 - Math.pow(1 - tr, 3);
+          var scale = 1 - easeOut * 0.85;
+          var alpha = 1 - easeOut;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, alpha);
+          ctx.translate(p.x, p.y);
+          ctx.scale(scale, scale);
+          ctx.translate(-p.x, -p.y);
+          drawHex(p.x, p.y, cell.color, cell.bomb, cell.missile, cell.cross, cell.diamond, false);
+          ctx.restore();
+        } else if (refillSet && refillSet[r + ',' + c]) {
           var t = Math.min(1, (now - refillAnim.start) / refillAnim.duration);
           var ease = 1 - Math.pow(1 - t, 3);
-          var dropOffset = (1 - ease) * -70;
-          var scale = 0.35 + 0.65 * ease;
+          var dropOffset = (1 - ease) * -100;
+          var scale = 0.3 + 0.7 * ease;
           ctx.save();
           ctx.translate(p.x, p.y + dropOffset);
           ctx.scale(scale, scale);
@@ -1012,6 +1079,7 @@
       drawHex(x1, y1, sa.cellA.color, sa.cellA.bomb, sa.cellA.missile, sa.cellA.cross, sa.cellA.diamond, false);
       drawHex(x2, y2, sa.cellB.color, sa.cellB.bomb, sa.cellB.missile, sa.cellB.cross, sa.cellB.diamond, false);
     }
+    ctx.restore();
     if (now < matchFlashUntil) {
       ctx.save();
       var flashAlpha = 1 - (now - (matchFlashUntil - 100)) / 100;
@@ -1127,6 +1195,8 @@
     }
     if (hexAnim) {
       ctx.save();
+      ctx.translate(gridOffsetX, gridOffsetY);
+      ctx.scale(gridScale, gridScale);
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
       var elapsed = Date.now() - hexAnim.start;
@@ -1207,6 +1277,8 @@
     if (hexAnim.crossPos) duration = Math.max(duration, CROSS_ANIM_MS);
     draw();
     ctx.save();
+    ctx.translate(gridOffsetX, gridOffsetY);
+    ctx.scale(gridScale, gridScale);
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
     if (hexAnim.bombPositions && hexAnim.bombPositions.length) drawBombAnim(hexAnim.bombPositions, elapsed);
@@ -1244,7 +1316,9 @@
     var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
     var clientX = touch ? e.touches[0].clientX : e.clientX;
     var clientY = touch ? e.touches[0].clientY : e.clientY;
-    return { px: (clientX - rect.left) * scaleX, py: (clientY - rect.top) * scaleY };
+    var canvasPx = (clientX - rect.left) * scaleX;
+    var canvasPy = (clientY - rect.top) * scaleY;
+    return { px: (canvasPx - gridOffsetX) / gridScale, py: (canvasPy - gridOffsetY) / gridScale };
   }
 
   function onPointerDown(px, py) {
@@ -1407,14 +1481,18 @@
   draw();
 
   function restart() {
-    var currentLevel = level;
     gameOver = false;
     gameOverUntil = 0;
+    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
     if (timerIntervalId) clearInterval(timerIntervalId);
     timerIntervalId = null;
+    lastKnownTimeLeft = 999;
+    var currentLevel = level;
     resetInputState();
     swapAnim = null;
     hexAnim = null;
+    refillAnim = null;
+    removeAnim = null;
     if (hexAnimIntervalId != null) clearInterval(hexAnimIntervalId);
     hexAnimIntervalId = null;
     matchDelayUntil = 0;
@@ -1423,6 +1501,7 @@
     chainInProgress = false;
     if (chainStepTimerId) clearTimeout(chainStepTimerId);
     chainStepTimerId = null;
+    itemsUnlocked = false;
     removedThisLevel = 0;
     diamondsRemovedThisLevel = 0;
     comboCount = 0;
@@ -1434,34 +1513,33 @@
     initGrid();
     updateProgressBar();
     startLevelTimer();
-    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
     draw();
   }
 
   if (gameOverRestartBtn) {
     function doRestart(e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
-      setTimeout(function() { restart(); }, 10);
+      restart();
     }
     gameOverRestartBtn.addEventListener('click', doRestart);
     gameOverRestartBtn.addEventListener('pointerdown', doRestart);
     gameOverRestartBtn.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      setTimeout(function() { restart(); }, 10);
+      restart();
     }, { passive: false });
   }
   if (gameOverOverlay) {
     function onRestartTap(e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
-      setTimeout(function() { restart(); }, 10);
+      restart();
     }
     gameOverOverlay.addEventListener('click', onRestartTap);
     gameOverOverlay.addEventListener('pointerdown', onRestartTap);
     gameOverOverlay.addEventListener('touchend', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      setTimeout(function() { restart(); }, 10);
+      restart();
     }, { passive: false });
   }
   }

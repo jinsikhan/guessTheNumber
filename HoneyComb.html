@@ -283,6 +283,18 @@
   var audioCtx = null;
   var audioReady = false;
   var audioResumePromise = null;
+  var matchAudio = null;
+  var comboAudio = null;
+  var levelupAudio = null;
+  var bombAudio = null;
+  var itemAudio = null;
+  function preloadMatchComboAudio() {
+    if (!matchAudio) { matchAudio = new Audio('match.mp3'); matchAudio.volume = 0.7; matchAudio.load(); }
+    if (!comboAudio) { comboAudio = new Audio('combo.mp3'); comboAudio.volume = 0.7; comboAudio.load(); }
+    if (!levelupAudio) { levelupAudio = new Audio('levelup.mp3'); levelupAudio.volume = 0.7; levelupAudio.load(); }
+    if (!bombAudio) { bombAudio = new Audio('bomb.mp3'); bombAudio.volume = 0.7; bombAudio.load(); }
+    if (!itemAudio) { itemAudio = new Audio('item.mp3'); itemAudio.volume = 0.7; itemAudio.load(); }
+  }
   function initAudio() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -305,22 +317,6 @@
   function stopBGM() {
     if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
   }
-  function playMatch() {
-    if (!audioCtx || !audioReady) return;
-    try {
-      var osc = audioCtx.createOscillator();
-      var g = audioCtx.createGain();
-      g.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-      osc.frequency.setValueAtTime(523, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.12);
-      osc.type = 'sine';
-      osc.connect(g);
-      g.connect(audioCtx.destination);
-      osc.start(audioCtx.currentTime);
-      osc.stop(audioCtx.currentTime + 0.15);
-    } catch (e) {}
-  }
   function playExplosion() {
     if (!audioCtx || !audioReady) return;
     try {
@@ -339,22 +335,33 @@
     } catch (e) {}
   }
   function playLevelUp() {
-    if (!audioCtx || !audioReady) return;
     try {
-      var freqs = [523, 659, 784, 1047];
-      freqs.forEach(function(f, i) {
-        var osc = audioCtx.createOscillator();
-        var g = audioCtx.createGain();
-        g.gain.setValueAtTime(0, audioCtx.currentTime);
-        g.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + i * 0.08 + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.08 + 0.2);
-        osc.frequency.value = f;
-        osc.type = 'sine';
-        osc.connect(g);
-        g.connect(audioCtx.destination);
-        osc.start(audioCtx.currentTime + i * 0.08);
-        osc.stop(audioCtx.currentTime + i * 0.08 + 0.25);
-      });
+      preloadMatchComboAudio();
+      if (levelupAudio) { levelupAudio.currentTime = 0; levelupAudio.play().catch(function() {}); }
+    } catch (e) {}
+  }
+  function playMatchMp3() {
+    try {
+      preloadMatchComboAudio();
+      if (matchAudio) { matchAudio.currentTime = 0; matchAudio.play().catch(function() {}); }
+    } catch (e) {}
+  }
+  function playComboMp3() {
+    try {
+      preloadMatchComboAudio();
+      if (comboAudio) { comboAudio.currentTime = 0; comboAudio.play().catch(function() {}); }
+    } catch (e) {}
+  }
+  function playBombMp3() {
+    try {
+      preloadMatchComboAudio();
+      if (bombAudio) { bombAudio.currentTime = 0; bombAudio.play().catch(function() {}); }
+    } catch (e) {}
+  }
+  function playItemMp3() {
+    try {
+      preloadMatchComboAudio();
+      if (itemAudio) { itemAudio.currentTime = 0; itemAudio.play().catch(function() {}); }
     } catch (e) {}
   }
   var swapAnim = null;
@@ -948,6 +955,7 @@
       var cell = get(unique[i].r, unique[i].c);
       if (cell && cell.diamond) diamondsInGroup++;
     }
+    var hasItems = (result.bombPositions && result.bombPositions.length) || result.missilePos || result.crossPos;
 
     removeAnim = {
       cells: unique.map(function(t) { return { r: t.r, c: t.c }; }),
@@ -955,6 +963,7 @@
       duration: REMOVE_ANIM_MS
     };
     spawnBurstParticles(unique);
+    if (!hasItems) { if (comboCount >= 2) playComboMp3(); else playMatchMp3(); }
 
     diamondsRemovedThisLevel += diamondsInGroup;
     if (comboCount === 1) removedThisLevel += unique.length;
@@ -962,7 +971,6 @@
     var comboBonus = comboCount > 1 ? (comboCount - 1) * 12 : 0;
     score += baseScore + comboBonus;
     scorePopups.push({ score: baseScore + comboBonus, x: canvas.width / 2, y: canvas.height / 2, start: Date.now() });
-    playMatch();
     comboText = getComboLabel(comboCount);
     if (comboCount >= 2) itemsUnlocked = true;
     comboShowUntil = Date.now() + 1200;
@@ -1504,7 +1512,9 @@
   }
 
   function startHexAnim() {
-    playExplosion();
+    if (hexAnim && hexAnim.bombPositions && hexAnim.bombPositions.length) playBombMp3();
+    else if (hexAnim && (hexAnim.missilePos || hexAnim.crossPos)) playItemMp3();
+    else playExplosion();
     if (hexAnimIntervalId != null) clearInterval(hexAnimIntervalId);
     hexAnimIntervalId = setInterval(animateHex, 50);
     animateHex();
@@ -1654,6 +1664,7 @@
 
   canvas.addEventListener('mousedown', function(e) {
     initAudio();
+    preloadMatchComboAudio();
     var co = getCoords(e, false);
     onPointerDown(co.px, co.py);
   });
@@ -1669,6 +1680,7 @@
   canvas.addEventListener('touchstart', function(e) {
     e.preventDefault();
     initAudio();
+    preloadMatchComboAudio();
     var co = getCoords(e, true);
     onPointerDown(co.px, co.py);
   }, { passive: false });

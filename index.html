@@ -700,26 +700,9 @@
           return true;
         });
         for (var i = 0; i < toRemove.length; i++) {
-          remove(toRemove[i].r, toRemove[i].c);
+          var t = toRemove[i];
+          set(t.r, t.c, randCell(t.r, t.c));
         }
-        var newGrid = [];
-        for (var c = 0; c < COLS; c++) {
-          var cells = [];
-          for (var r = ROWS - 1; r >= 0; r--) {
-            var cell = get(r, c);
-            if (cell) cells.push(cell);
-          }
-          var idx = 0;
-          for (var r = ROWS - 1; r >= 0; r--) {
-            if (idx < cells.length) {
-              newGrid[r * COLS + c] = cells[idx];
-              idx++;
-            } else {
-              newGrid[r * COLS + c] = randCell(r, c);
-            }
-          }
-        }
-        for (var i = 0; i < ROWS * COLS; i++) grid[i] = newGrid[i];
         totalRemoved += toRemove.length;
         return toRemove.length;
       }
